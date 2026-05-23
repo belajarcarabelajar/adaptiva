@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Adaptiva Study</title>
+  
+  <!-- Favicon using lightning bolt emoji -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/heroicons/2.0.18/24/outline/academic-cap.svg" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/heroicons/2.0.18/24/outline/book-open.svg" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/heroicons/2.0.18/24/outline/calendar-days.svg" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/heroicons/2.0.18/24/outline/question-mark-circle.svg" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/heroicons/2.0.18/24/outline/chat-bubble-left-ellipsis.svg" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/heroicons/2.0.18/24/solid/check-circle.svg" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/heroicons/2.0.18/24/solid/x-circle.svg" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "react": "https://esm.sh/react@^19.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.0.1",
+    "dompurify": "https://esm.sh/dompurify@^3.1.5"
+  }
+}
+</script>
+  <script>
+    // Immediately try to set dark mode to prevent FOUC
+    (function() {
+      if (localStorage.getItem('adaptivaStudyDarkMode') === 'true' || 
+          (!('adaptivaStudyDarkMode' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    })();
+
+    tailwind.config = {
+      darkMode: 'class', // Enable class strategy for dark mode
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              black: '#000000',
+              orange: '#F3511E',
+              yellow: '#FACC15',
+              white: '#FFFFFF',
+              blue: '#0057A0',
+              red: '#D71012',
+              green: '#2E7D32',
+              lightGray: '#F5F5F5', 
+              mediumGray: '#E0E0E0',
+            }
+          }
+        }
+      }
+    }
+  </script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-brand-white text-brand-black dark:bg-brand-black dark:text-gray-100 transition-colors duration-300">
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
