@@ -172,9 +172,9 @@ const App: React.FC = () => {
                     // FIX: Safely access properties on a potentially untyped object from localStorage.
                     // The 'unknown' type from JSON parsing requires a safer access pattern.
                     const statusObj = oldStatus as Record<string, unknown>;
-                    summaryLoaded = !!statusObj.summaryLoaded;
-                    quizTaken = !!statusObj.quizTaken;
-                } else if (typeof oldStatus === 'boolean') { 
+                    summaryLoaded = Boolean(statusObj['summaryLoaded']);
+                    quizTaken = Boolean(statusObj['quizTaken']);
+                } else if (typeof oldStatus === 'boolean') {
                     summaryLoaded = oldStatus;
                 }
                 
@@ -270,11 +270,12 @@ const App: React.FC = () => {
       if (!currentItem.curriculum || !currentItem.sevenDayPlan || !currentItem.moduleCompletionStatus) return prevItems;
 
       const totalModules = currentItem.curriculum.modules.length;
-      
-      const completedModulesSummaries = Object.values(currentItem.moduleCompletionStatus)
-                                          .filter((status: { summaryLoaded: boolean; quizTaken: boolean; }) => status.summaryLoaded).length;
-      const completedQuizzes = Object.values(currentItem.moduleCompletionStatus)
-                                 .filter((status: { summaryLoaded: boolean; quizTaken: boolean; }) => status.quizTaken).length;
+
+      const moduleStatuses = Object.values(currentItem.moduleCompletionStatus) as { summaryLoaded: boolean; quizTaken: boolean; }[];
+      const completedModulesSummaries = moduleStatuses
+                                          .filter(status => status.summaryLoaded).length;
+      const completedQuizzes = moduleStatuses
+                                 .filter(status => status.quizTaken).length;
       
       const totalPlanTasks = currentItem.sevenDayPlan.days.length;
       const completedPlanTasks = Object.values(currentItem.planTaskCompletionStatus)
