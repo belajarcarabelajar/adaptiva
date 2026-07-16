@@ -16,6 +16,32 @@ if (typeof DOMPurify.addHook === 'function') {
 }
 
 // Helper function to apply inline Markdown formatting to HTML
+
+// Pre-compiled regular expressions for performance optimization
+const HTML_ATTR_REGEXES = [
+    /(\s+|\b)(target|rel|class|style|title|id|href|src)\s*=\s*("[^"]*"|'[^']*')/gi,
+];
+const UNCLOSED_QUOTE_ATTR_REGEX = /(\s*")(target|rel|class|style|title|id|href|src)\s*=\s*$/gi;
+const UNCLOSED_ATTR_QUOTE_REGEX = /(\s*)(target|rel|class|style|title|id|href|src)\s*=\s*("|\')$/gi;
+const ORPHANED_HTML_TAG_REGEX = /<\/?([a-z][a-z0-9]*)\b[^>]*>/gi;
+
+const TARGET_ATTR_REGEX = /\s*target\s*=/i;
+const REL_ATTR_REGEX = /\s*rel\s*=/i;
+const CLASS_ATTR_REGEX = /\s*class\s*=/i;
+
+const MALICIOUS_PROTOCOL_REGEX = /^(javascript|data):/i;
+
+const MARKDOWN_LINK_REGEX = /\[([^\]]+)]\(([^)]+)\)/g;
+const AUTOLINK_URL_REGEX = /(\b(https?|ftp):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])|(\bwww\.[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/gi;
+
+const BOLD_REGEX = /\*\*(.*?)\*\*|__(.*?)__/g;
+const ITALIC_UNDERSCORE_REGEX = /(?<![a-zA-Z0-9_])_(?!_)(.*?)(?<!_)_(?![a-zA-Z0-9_])/g;
+const ITALIC_ASTERISK_REGEX = /(^|\s)\*(?!\s|\*)(.+?)(?<!\s|\*)\*(?=\s|$)/g;
+
+const NUMBERED_LIST_REGEX = /^(\d+)\.\s+/;
+const BULLETED_LIST_REGEX = /^(\*|-)\s+/;
+const NUMBERED_LIST_CHECK_REGEX = /^\d+\.\s/;
+
 export const applyInlineFormatting = (text: string): string => {
   if (!text) return "";
   let formattedText = text;
@@ -23,9 +49,18 @@ export const applyInlineFormatting = (text: string): string => {
   // Helper to strip common HTML attribute patterns from a string
   const stripHtmlAttributesFromString = (str: string): string => {
     let cleanedStr = str;
-    
+
+    // Remove common quoted attributes: "attr=value", 'attr=value', attr="value", attr='value'
+    HTML_ATTR_REGEXES.forEach(pattern => {
+        cleanedStr = cleanedStr.replace(pattern, '');
+    });
+
+    // Remove potentially unclosed/malformed attributes if they look like ` "attr=` or ` attr="` at string end
+    cleanedStr = cleanedStr.replace(UNCLOSED_QUOTE_ATTR_REGEX, '$1'); // "attr=
+    cleanedStr = cleanedStr.replace(UNCLOSED_ATTR_QUOTE_REGEX, '$1'); // attr=" or attr='
+
     // Remove orphaned HTML tags often mistakenly added by AI
-    cleanedStr = cleanedStr.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, '');
+    cleanedStr = cleanedStr.replace(ORPHANED_HTML_TAG_REGEX, '');
 
 
     return cleanedStr.trim();
@@ -33,14 +68,14 @@ export const applyInlineFormatting = (text: string): string => {
 
 
   // Markdown links: [text](url)
-  formattedText = formattedText.replace(/\[([^\]]+)]\(([^)]+)\)/g, (match, rawLinkText, capturedUrlContent) => {
+  formattedText = formattedText.replace(MARKDOWN_LINK_REGEX, (match, rawLinkText, capturedUrlContent) => {
     let urlToUse = capturedUrlContent;
 
     // Clean the URL part
     const firstDoubleQuoteIndexUrl = urlToUse.indexOf('"');
     if (firstDoubleQuoteIndexUrl !== -1) {
         const suffix = urlToUse.substring(firstDoubleQuoteIndexUrl);
-        if (/\s*target\s*=/i.test(suffix) || /\s*rel\s*=/i.test(suffix) || /\s*class\s*=/i.test(suffix) || 
+        if (TARGET_ATTR_REGEX.test(suffix) || REL_ATTR_REGEX.test(suffix) || CLASS_ATTR_REGEX.test(suffix) ||
             suffix.toLowerCase().startsWith('"target=') || suffix.toLowerCase().startsWith('"rel=') || suffix.toLowerCase().startsWith('"class=')) {
             urlToUse = urlToUse.substring(0, firstDoubleQuoteIndexUrl);
         }
@@ -48,7 +83,7 @@ export const applyInlineFormatting = (text: string): string => {
     const firstSingleQuoteIndexUrl = urlToUse.indexOf("'");
     if (firstSingleQuoteIndexUrl !== -1) {
         const suffix = urlToUse.substring(firstSingleQuoteIndexUrl);
-        if (/\s*target\s*=/i.test(suffix) || /\s*rel\s*=/i.test(suffix) || /\s*class\s*=/i.test(suffix) ||
+        if (TARGET_ATTR_REGEX.test(suffix) || REL_ATTR_REGEX.test(suffix) || CLASS_ATTR_REGEX.test(suffix) ||
             suffix.toLowerCase().startsWith("'target=") || suffix.toLowerCase().startsWith("'rel=") || suffix.toLowerCase().startsWith("'class=")) {
             urlToUse = urlToUse.substring(0, firstSingleQuoteIndexUrl);
         }
@@ -56,7 +91,7 @@ export const applyInlineFormatting = (text: string): string => {
     urlToUse = stripHtmlAttributesFromString(urlToUse.trim()); // Further clean and trim URL
 
 
-    if (/^(javascript|data):/i.test(urlToUse)) {
+    if (MALICIOUS_PROTOCOL_REGEX.test(urlToUse)) {
         return match; // Return original match if potentially malicious
     }
 
@@ -78,8 +113,7 @@ export const applyInlineFormatting = (text: string): string => {
   });
 
   // Autolink URLs (should run after specific Markdown link parsing)
-  const urlRegex = /(\b(https?|ftp):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])|(\bwww\.[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/gi;
-  formattedText = formattedText.replace(urlRegex, (urlMatch, p1, p2, p3, offset) => {
+  formattedText = formattedText.replace(AUTOLINK_URL_REGEX, (urlMatch, p1, p2, p3, offset) => {
     // Check if this match is already part of an <a> tag's href or text created by the Markdown link rule above.
     // This is a simple check; more robust would involve parsing the HTML structure.
     const surroundingChars = formattedText.substring(
@@ -94,18 +128,18 @@ export const applyInlineFormatting = (text: string): string => {
     if (urlMatch.toLowerCase().startsWith('www.')) {
       properUrl = 'http://' + urlMatch; 
     }
-    if (/^(javascript|data):/i.test(properUrl)) {
+    if (MALICIOUS_PROTOCOL_REGEX.test(properUrl)) {
         return urlMatch; 
     }
     return `<a href="${properUrl}" class="text-brand-orange hover:text-brand-red dark:text-orange-400 dark:hover:text-red-500 underline">${urlMatch}</a>`;
   });
   
   // Bold: **text** or __text__
-  formattedText = formattedText.replace(/\*\*(.*?)\*\*|__(.*?)__/g, (match, p1, p2) => `<strong>${p1 || p2}</strong>`);
+  formattedText = formattedText.replace(BOLD_REGEX, (match, p1, p2) => `<strong>${p1 || p2}</strong>`);
   
   // Italic: _text_ or *text*
-  formattedText = formattedText.replace(/(?<![a-zA-Z0-9_])_(?!_)(.*?)(?<!_)_(?![a-zA-Z0-9_])/g, '<em>$1</em>');
-  formattedText = formattedText.replace(/(^|\s)\*(?!\s|\*)(.+?)(?<!\s|\*)\*(?=\s|$)/g, '$1<em>$2</em>');
+  formattedText = formattedText.replace(ITALIC_UNDERSCORE_REGEX, '<em>$1</em>');
+  formattedText = formattedText.replace(ITALIC_ASTERISK_REGEX, '$1<em>$2</em>');
 
   return formattedText;
 };
@@ -119,8 +153,7 @@ function MarkdownRendererInternal({ content, baseTextSize = "text-xl" }: Markdow
   if (!content) return null;
 
   const createMarkup = (line: string, key: string | number): React.ReactElement | null => {
-    const numberedListRegex = /^(\d+)\.\s+/;
-    const numberedListMatch = line.match(numberedListRegex);
+    const numberedListMatch = line.match(NUMBERED_LIST_REGEX);
 
     let htmlContentSource = ""; 
 
@@ -146,23 +179,19 @@ function MarkdownRendererInternal({ content, baseTextSize = "text-xl" }: Markdow
       if (line.startsWith('✅ ')) {
         contentPart = line.substring(2); 
         displayPrefix = '✅ ';
-        const innerBulletedRegex = /^(\*|-)\s+/;
-        const innerNumberedRegex = /^(\d+)\.\s+/;
-        if (innerBulletedRegex.test(contentPart)) {
-            contentPart = contentPart.substring(contentPart.match(innerBulletedRegex)![0].length);
-        } else if (innerNumberedRegex.test(contentPart)) {
-            contentPart = contentPart.substring(contentPart.match(innerNumberedRegex)![0].length);
+        if (BULLETED_LIST_REGEX.test(contentPart)) {
+            contentPart = contentPart.substring(contentPart.match(BULLETED_LIST_REGEX)![0].length);
+        } else if (NUMBERED_LIST_REGEX.test(contentPart)) {
+            contentPart = contentPart.substring(contentPart.match(NUMBERED_LIST_REGEX)![0].length);
         }
       } else if (line.startsWith('* ') || line.startsWith('- ')) {
         contentPart = line.substring(2);
-        const innerBulletedRegexAlt = /^(\*|-)\s+/;
-        if (innerBulletedRegexAlt.test(contentPart)) {
-            contentPart = contentPart.substring(contentPart.match(innerBulletedRegexAlt)![0].length);
+        if (BULLETED_LIST_REGEX.test(contentPart)) {
+            contentPart = contentPart.substring(contentPart.match(BULLETED_LIST_REGEX)![0].length);
         }
       } else if (numberedListMatch) {
         contentPart = line.substring(numberedListMatch[0].length);
-        const innerNumberedListRegex = /^(\d+)\.\s+/;
-        const innerMatch = contentPart.match(innerNumberedListRegex);
+        const innerMatch = contentPart.match(NUMBERED_LIST_REGEX);
         if (innerMatch) {
             contentPart = contentPart.substring(innerMatch[0].length);
         }
@@ -200,7 +229,7 @@ function MarkdownRendererInternal({ content, baseTextSize = "text-xl" }: Markdow
       const currentElementsIndex = elements.indexOf(el); 
       const originalLine = processedLines[currentElementsIndex]; 
 
-      const isNumbered = originalLine && /^\d+\.\s/.test(originalLine.trim());
+      const isNumbered = originalLine && NUMBERED_LIST_CHECK_REGEX.test(originalLine.trim());
       const listTypeForThisItem = isNumbered ? 'ol' : 'ul';
 
       if (currentListType !== listTypeForThisItem && currentListItems.length > 0) {
