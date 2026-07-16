@@ -247,11 +247,24 @@ export const generateInitialCurriculumOutline = async (
   }
 };
 
+// Simple LRU Cache for module summaries to prevent redundant API calls
+const moduleSummaryCache = new Map<string, { moduleMaterial: string }>();
+const MAX_CACHE_SIZE = 50;
+
 export const generateModuleLectureSummary = async (
   moduleTitle: string, 
   overallTopic: string, 
   targetLanguage?: string
 ): Promise<{ moduleMaterial: string } | null> => {
+  const cacheKey = `${overallTopic}|${moduleTitle}|${targetLanguage || 'English'}`;
+  if (moduleSummaryCache.has(cacheKey)) {
+    // Move to end to mark as recently used
+    const cachedResult = moduleSummaryCache.get(cacheKey)!;
+    moduleSummaryCache.delete(cacheKey);
+    moduleSummaryCache.set(cacheKey, cachedResult);
+    return cachedResult;
+  }
+
   let languageInstruction = "";
   if (targetLanguage && targetLanguage.toLowerCase() !== "english") {
     languageInstruction = `
@@ -336,7 +349,18 @@ The material should be comprehensive enough for thorough understanding of ${modu
     const parsedData = parseGeminiJsonResponse<GeminiModuleDetailResponse>(rawResponseText);
 
     if (parsedData && typeof parsedData.moduleMaterial === 'string') {
-      return { moduleMaterial: parsedData.moduleMaterial };
+      const result = { moduleMaterial: parsedData.moduleMaterial };
+
+      moduleSummaryCache.set(cacheKey, result);
+      if (moduleSummaryCache.size > MAX_CACHE_SIZE) {
+        // Remove the oldest entry (first item in the Map)
+        const firstKey = moduleSummaryCache.keys().next().value;
+        if (firstKey) {
+            moduleSummaryCache.delete(firstKey);
+        }
+      }
+
+      return result;
     }
     console.error("Failed to parse module material from Gemini. Full response text:", rawResponseText);
     return null;
