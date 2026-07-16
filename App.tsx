@@ -552,9 +552,11 @@ const App: React.FC = () => {
                     summaryLoaded: true 
                   }
                 };
+                const updatedHistModules = [...hItem.curriculum.modules];
+                updatedHistModules[moduleIndex] = updatedModules[moduleIndex];
                 const updatedHistCurriculum = {
                     ...hItem.curriculum,
-                    modules: hItem.curriculum.modules.map((m, idx) => idx === moduleIndex ? updatedModules[moduleIndex] : m)
+                    modules: updatedHistModules
                 };
                 return { 
                   ...hItem, 
@@ -585,9 +587,11 @@ const App: React.FC = () => {
         setHistoryItems(currentHistoryItems => 
             currentHistoryItems.map(hItem => {
               if (hItem.id === selectedHistoryItemId) {
+                 const updatedHistModules = [...hItem.curriculum.modules];
+                 updatedHistModules[moduleIndex] = updatedModules[moduleIndex];
                  const updatedHistCurriculum = {
                     ...hItem.curriculum,
-                    modules: hItem.curriculum.modules.map((m, idx) => idx === moduleIndex ? updatedModules[moduleIndex] : m)
+                    modules: updatedHistModules
                 };
                 return { ...hItem, curriculum: updatedHistCurriculum };
               }
