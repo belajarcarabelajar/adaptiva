@@ -897,7 +897,7 @@ const App: React.FC = () => {
         const qIdx = targetQuestionSource.findIndex(q => q.id === questionId);
         if (qIdx !== -1) {
             const updateFn = (prevQ: (QuizQuestion | ExamQuestion)[]) => {
-                const updated = [...prevQ] as any[]; 
+                const updated = [...prevQ];
                 updated[qIdx] = { ...updated[qIdx], isDetailedExplanationLoading: false, detailedExplanation: "Error: Module material unavailable for detailed explanation." };
                 return updated;
             };
@@ -932,7 +932,7 @@ const App: React.FC = () => {
     };
     
     updateStateForExplanation(prevQuestions => {
-        const updated = [...prevQuestions] as any[]; 
+        const updated = [...prevQuestions];
         updated[questionIndex] = { ...updated[questionIndex], isDetailedExplanationLoading: true, detailedExplanation: undefined };
         return updated;
     });
@@ -955,7 +955,7 @@ const App: React.FC = () => {
 
         if (explanationData && explanationData.detailedExplanation) {
             updateStateForExplanation(prevQuestions => {
-                const updated = [...prevQuestions] as any[]; 
+                const updated = [...prevQuestions];
                 updated[questionIndex] = { 
                     ...updated[questionIndex], 
                     detailedExplanation: explanationData.detailedExplanation, 
@@ -969,7 +969,7 @@ const App: React.FC = () => {
     } catch (err) {
         console.error("Error loading detailed explanation:", err);
         updateStateForExplanation(prevQuestions => {
-            const updated = [...prevQuestions] as any[]; 
+            const updated = [...prevQuestions];
             updated[questionIndex] = { ...updated[questionIndex], isDetailedExplanationLoading: false, detailedExplanation: `Error: Could not load more details. (${(err as Error).message})` };
             return updated;
         });
