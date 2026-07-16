@@ -188,7 +188,6 @@ function MarkdownRendererInternal({ content, baseTextSize = "text-xl" }: Markdow
   const lines = content.split('\n');
   const processedLines = lines.filter(line => line.trim() !== ''); 
 
-  // FIX: Replace JSX.Element with React.ReactElement to avoid namespace errors.
   const elements = processedLines.map((line, index) => {
       return createMarkup(line, index);
   }).filter((el): el is React.ReactElement => el !== null);
