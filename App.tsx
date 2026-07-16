@@ -272,14 +272,16 @@ const App: React.FC = () => {
       const totalModules = currentItem.curriculum.modules.length;
 
       const moduleStatuses = Object.values(currentItem.moduleCompletionStatus) as { summaryLoaded: boolean; quizTaken: boolean; }[];
-      const completedModulesSummaries = moduleStatuses
-                                          .filter(status => status.summaryLoaded).length;
-      const completedQuizzes = moduleStatuses
-                                 .filter(status => status.quizTaken).length;
-      
+      const { completedModulesSummaries, completedQuizzes } = moduleStatuses
+        .reduce((acc, status) => {
+          if (status.summaryLoaded) acc.completedModulesSummaries++;
+          if (status.quizTaken) acc.completedQuizzes++;
+          return acc;
+        }, { completedModulesSummaries: 0, completedQuizzes: 0 });
+
       const totalPlanTasks = currentItem.sevenDayPlan.days.length;
       const completedPlanTasks = Object.values(currentItem.planTaskCompletionStatus)
-                                   .filter(status => status).length;
+        .reduce((count, status) => count + (status ? 1 : 0), 0);
 
       const totalCompletableUnits = (totalModules * 2) + totalPlanTasks; 
       const completedUnits = completedModulesSummaries + completedQuizzes + completedPlanTasks;
