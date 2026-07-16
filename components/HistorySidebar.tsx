@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { HistoryItem } from '../types';
 import { Icons } from '../constants';
 
@@ -39,6 +39,10 @@ const HistorySidebar: React.FC<HistorySidebarProps> = memo(({
   const handleNewSessionClick = () => {
     onNewSession();
   }
+
+  const sortedHistoryItems = useMemo(() => {
+    return [...historyItems].sort((a, b) => b.timestamp - a.timestamp);
+  }, [historyItems]);
 
   return (
     <aside 
@@ -105,10 +109,10 @@ const HistorySidebar: React.FC<HistorySidebarProps> = memo(({
         )}
 
         <div className="flex-grow overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-thumb-brand-mediumGray dark:scrollbar-thumb-gray-700 scrollbar-track-transparent">
-          {historyItems.length === 0 && (
+          {sortedHistoryItems.length === 0 && (
             <p className="text-brand-black/70 dark:text-gray-400 text-sm italic">No history yet. Start a new session!</p>
           )}
-          {historyItems.sort((a,b) => b.timestamp - a.timestamp).map((item) => (
+          {sortedHistoryItems.map((item) => (
             <div key={item.id} className="relative group">
               <button
                 onClick={() => handleItemSelect(item.id)}
