@@ -23,11 +23,6 @@ const ExamResultsView: React.FC<ExamResultsViewProps> = ({
   const percentageScore = examAttempt.maxScore > 0 
     ? Math.round((examAttempt.totalScore / examAttempt.maxScore) * 100) 
     : 0;
-  
-  // Since all questions are MC, mcqScore is totalScore and maxMcqScore is maxScore
-  // const mcqScore = examAttempt.totalScore;
-  // const maxMcqScore = examAttempt.maxScore;
-  // const mcqPercentage = percentageScore;
 
   return (
     <div className="p-4 md:p-6 bg-brand-white dark:bg-brand-black rounded-lg shadow-xl border border-brand-mediumGray dark:border-gray-700">
