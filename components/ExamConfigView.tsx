@@ -16,7 +16,6 @@ const ExamConfigView: React.FC<ExamConfigViewProps> = ({
   initialConfig,
 }) => {
   const [numMultipleChoice, setNumMultipleChoice] = useState(initialConfig?.numMultipleChoice ?? 10); // Default to 10 MCQs
-  // const [numShortAnswer, setNumShortAnswer] = useState(initialConfig?.numShortAnswer ?? 2); // Removed
   const [difficulty, setDifficulty] = useState(initialConfig?.difficulty ?? 3); // 1-5
   const [timeLimitEnabled, setTimeLimitEnabled] = useState(initialConfig?.timeLimitEnabled ?? false);
   const [durationMinutes, setDurationMinutes] = useState(initialConfig?.durationMinutes ?? 30);
@@ -24,7 +23,6 @@ const ExamConfigView: React.FC<ExamConfigViewProps> = ({
   useEffect(() => {
     if (initialConfig) {
         setNumMultipleChoice(initialConfig.numMultipleChoice ?? 10);
-        // setNumShortAnswer(initialConfig.numShortAnswer ?? 0); // Removed
         setDifficulty(initialConfig.difficulty ?? 3);
         setTimeLimitEnabled(initialConfig.timeLimitEnabled ?? false);
         setDurationMinutes(initialConfig.durationMinutes ?? 30);
@@ -37,7 +35,6 @@ const ExamConfigView: React.FC<ExamConfigViewProps> = ({
       moduleId: moduleTitle.replace(/\s+/g, '-').toLowerCase(), 
       moduleTitle,
       numMultipleChoice,
-      // numShortAnswer: 0, // Removed - ensure it's not passed
       difficulty,
       timeLimitEnabled,
       durationMinutes: timeLimitEnabled ? durationMinutes : undefined,
@@ -55,12 +52,6 @@ const ExamConfigView: React.FC<ExamConfigViewProps> = ({
           <label htmlFor="numMC" className="block text-sm font-medium text-brand-blue dark:text-blue-300 mb-1">Number of Multiple Choice Questions</label>
           <input type="number" id="numMC" value={numMultipleChoice} onChange={e => setNumMultipleChoice(Math.max(0, parseInt(e.target.value)))} min="0" className="w-full p-2 border border-brand-mediumGray dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-gray-100" />
         </div>
-        {/* Removed Short Answer Input
-        <div>
-          <label htmlFor="numSA" className="block text-sm font-medium text-brand-blue dark:text-blue-300 mb-1">Number of Short Answer Questions</label>
-          <input type="number" id="numSA" value={numShortAnswer} onChange={e => setNumShortAnswer(Math.max(0, parseInt(e.target.value)))} min="0" className="w-full p-2 border border-brand-mediumGray dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-gray-100" />
-        </div>
-        */}
         <div>
           <label htmlFor="difficulty" className="block text-sm font-medium text-brand-blue dark:text-blue-300 mb-1">Difficulty (1-Easy to 5-Hard)</label>
           <select id="difficulty" value={difficulty} onChange={e => setDifficulty(parseInt(e.target.value))} className="w-full p-2 border border-brand-mediumGray dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-gray-100 appearance-none">
