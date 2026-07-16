@@ -119,7 +119,7 @@ interface MarkdownRendererProps {
 function MarkdownRendererInternal({ content, baseTextSize = "text-xl" }: MarkdownRendererProps) {
   if (!content) return null;
 
-  const createMarkup = (line: string, key: string | number) => {
+  const createMarkup = (line: string, key: string | number): React.ReactElement | null => {
     const numberedListRegex = /^(\d+)\.\s+/;
     const numberedListMatch = line.match(numberedListRegex);
 
@@ -191,7 +191,7 @@ function MarkdownRendererInternal({ content, baseTextSize = "text-xl" }: Markdow
   // FIX: Replace JSX.Element with React.ReactElement to avoid namespace errors.
   const elements = processedLines.map((line, index) => {
       return createMarkup(line, index);
-  }).filter(Boolean) as React.ReactElement[]; 
+  }).filter((el): el is React.ReactElement => el !== null);
 
   const groupedElements: React.ReactElement[] = [];
   let currentListItems: React.ReactElement[] = [];
