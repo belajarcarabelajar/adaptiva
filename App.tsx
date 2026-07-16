@@ -570,29 +570,30 @@ const App: React.FC = () => {
             loadingError: null
           };
           
-          setHistoryItems(currentHistoryItems => 
-            currentHistoryItems.map(hItem => {
-              if (hItem.id === selectedHistoryItemId) {
-                const newModuleCompletionStatus = {
-                  ...hItem.moduleCompletionStatus,
-                  [moduleToLoad.title]: { 
-                    ...(hItem.moduleCompletionStatus[moduleToLoad.title] || { quizTaken: false }),
-                    summaryLoaded: true 
-                  }
-                };
-                const updatedHistCurriculum = {
-                    ...hItem.curriculum,
-                    modules: hItem.curriculum.modules.map((m, idx) => idx === moduleIndex ? updatedModules[moduleIndex] : m)
-                };
-                return { 
-                  ...hItem, 
-                  curriculum: updatedHistCurriculum,
-                  moduleCompletionStatus: newModuleCompletionStatus
-                };
+          setHistoryItems(currentHistoryItems => {
+            const itemIndex = currentHistoryItems.findIndex(h => h.id === selectedHistoryItemId);
+            if (itemIndex === -1) return currentHistoryItems;
+
+            const hItem = currentHistoryItems[itemIndex];
+            const newModuleCompletionStatus = {
+              ...hItem.moduleCompletionStatus,
+              [moduleToLoad.title]: {
+                ...(hItem.moduleCompletionStatus[moduleToLoad.title] || { quizTaken: false }),
+                summaryLoaded: true
               }
-              return hItem;
-            })
-          );
+            };
+            const updatedHistCurriculum = {
+                ...hItem.curriculum,
+                modules: hItem.curriculum.modules.map((m, idx) => idx === moduleIndex ? updatedModules[moduleIndex] : m)
+            };
+            const newItems = [...currentHistoryItems];
+            newItems[itemIndex] = {
+              ...hItem,
+              curriculum: updatedHistCurriculum,
+              moduleCompletionStatus: newModuleCompletionStatus
+            };
+            return newItems;
+          });
           return { ...prev, modules: updatedModules };
         });
         return detailData.moduleMaterial;
@@ -610,18 +611,19 @@ const App: React.FC = () => {
             isLoading: false, 
             loadingError: errorMessage
         }; 
-        setHistoryItems(currentHistoryItems => 
-            currentHistoryItems.map(hItem => {
-              if (hItem.id === selectedHistoryItemId) {
-                 const updatedHistCurriculum = {
-                    ...hItem.curriculum,
-                    modules: hItem.curriculum.modules.map((m, idx) => idx === moduleIndex ? updatedModules[moduleIndex] : m)
-                };
-                return { ...hItem, curriculum: updatedHistCurriculum };
-              }
-              return hItem;
-            })
-          );
+        setHistoryItems(currentHistoryItems => {
+            const itemIndex = currentHistoryItems.findIndex(h => h.id === selectedHistoryItemId);
+            if (itemIndex === -1) return currentHistoryItems;
+
+            const hItem = currentHistoryItems[itemIndex];
+            const updatedHistCurriculum = {
+                ...hItem.curriculum,
+                modules: hItem.curriculum.modules.map((m, idx) => idx === moduleIndex ? updatedModules[moduleIndex] : m)
+            };
+            const newItems = [...currentHistoryItems];
+            newItems[itemIndex] = { ...hItem, curriculum: updatedHistCurriculum };
+            return newItems;
+        });
         return { ...prev, modules: updatedModules };
       });
       return null;
@@ -709,18 +711,18 @@ const App: React.FC = () => {
   const handleTogglePlanTask = useCallback((dayNumber: number) => {
     if (!selectedHistoryItemId) return;
 
-    setHistoryItems(prevItems => 
-      prevItems.map(item => {
-        if (item.id === selectedHistoryItemId) {
-          const newPlanTaskCompletionStatus = {
-            ...item.planTaskCompletionStatus,
-            [dayNumber]: !item.planTaskCompletionStatus[dayNumber]
-          };
-          return { ...item, planTaskCompletionStatus: newPlanTaskCompletionStatus };
-        }
-        return item;
-      })
-    );
+    setHistoryItems(prevItems => {
+      const itemIndex = prevItems.findIndex(h => h.id === selectedHistoryItemId);
+      if (itemIndex === -1) return prevItems;
+      const item = prevItems[itemIndex];
+      const newPlanTaskCompletionStatus = {
+        ...item.planTaskCompletionStatus,
+        [dayNumber]: !item.planTaskCompletionStatus[dayNumber]
+      };
+      const newItems = [...prevItems];
+      newItems[itemIndex] = { ...item, planTaskCompletionStatus: newPlanTaskCompletionStatus };
+      return newItems;
+    });
   }, [selectedHistoryItemId]); 
 
 
@@ -822,55 +824,56 @@ const App: React.FC = () => {
         timestamp: Date.now(),
       };
 
-      setHistoryItems(prevItems => 
-        prevItems.map(item => {
-          if (item.id === selectedHistoryItemId) {
-            const updatedModuleCompletionStatus = { ...item.moduleCompletionStatus };
-            if (currentQuizModuleInfo && updatedModuleCompletionStatus[currentQuizModuleInfo.title]) {
-              updatedModuleCompletionStatus[currentQuizModuleInfo.title] = {
-                ...updatedModuleCompletionStatus[currentQuizModuleInfo.title],
-                quizTaken: true,
-              };
-            }
+      setHistoryItems(prevItems => {
+        const itemIndex = prevItems.findIndex(h => h.id === selectedHistoryItemId);
+        if (itemIndex === -1) return prevItems;
+        const item = prevItems[itemIndex];
 
-            let updatedQuizHistory = [...(item.quizHistory || [])];
-            
-            let lastAttemptIndex = -1;
-            if(currentQuizModuleInfo) { 
-              for (let i = updatedQuizHistory.length - 1; i >= 0; i--) {
-                if (updatedQuizHistory[i].moduleTitle === currentQuizModuleInfo.title) {
-                  lastAttemptIndex = i;
-                  break;
-                }
-              }
-            }
+        const updatedModuleCompletionStatus = { ...item.moduleCompletionStatus };
+        if (currentQuizModuleInfo && updatedModuleCompletionStatus[currentQuizModuleInfo.title]) {
+          updatedModuleCompletionStatus[currentQuizModuleInfo.title] = {
+            ...updatedModuleCompletionStatus[currentQuizModuleInfo.title],
+            quizTaken: true,
+          };
+        }
 
-            if (lastAttemptIndex !== -1) {
-              const lastAttempt = updatedQuizHistory[lastAttemptIndex];
-              const lastAttemptScorePercentage = lastAttempt.quiz.length > 0 ? (lastAttempt.score / lastAttempt.quiz.length) * 100 : 0;
-              const newScorePercentage = newQuizAttempt.quiz.length > 0 ? (newQuizAttempt.score / newQuizAttempt.quiz.length) * 100 : 0;
+        let updatedQuizHistory = [...(item.quizHistory || [])];
 
-              if (lastAttemptScorePercentage < 50 && newScorePercentage >= 50) {
-                updatedQuizHistory[lastAttemptIndex] = {
-                  ...newQuizAttempt,
-                  retakeInfo: targetLanguage.toLowerCase().includes("bahasa indonesia") ? "Lulus setelah percobaan sebelumnya." : "Passed on retake after a previous attempt.",
-                };
-              } else {
-                updatedQuizHistory.push(newQuizAttempt);
-              }
-            } else {
-              updatedQuizHistory.push(newQuizAttempt);
+        let lastAttemptIndex = -1;
+        if(currentQuizModuleInfo) {
+          for (let i = updatedQuizHistory.length - 1; i >= 0; i--) {
+            if (updatedQuizHistory[i].moduleTitle === currentQuizModuleInfo.title) {
+              lastAttemptIndex = i;
+              break;
             }
-            
-            return { 
-              ...item, 
-              quizHistory: updatedQuizHistory.sort((a, b) => b.timestamp - a.timestamp),
-              moduleCompletionStatus: updatedModuleCompletionStatus
-            };
           }
-          return item;
-        })
-      );
+        }
+
+        if (lastAttemptIndex !== -1) {
+          const lastAttempt = updatedQuizHistory[lastAttemptIndex];
+          const lastAttemptScorePercentage = lastAttempt.quiz.length > 0 ? (lastAttempt.score / lastAttempt.quiz.length) * 100 : 0;
+          const newScorePercentage = newQuizAttempt.quiz.length > 0 ? (newQuizAttempt.score / newQuizAttempt.quiz.length) * 100 : 0;
+
+          if (lastAttemptScorePercentage < 50 && newScorePercentage >= 50) {
+            updatedQuizHistory[lastAttemptIndex] = {
+              ...newQuizAttempt,
+              retakeInfo: targetLanguage.toLowerCase().includes("bahasa indonesia") ? "Lulus setelah percobaan sebelumnya." : "Passed on retake after a previous attempt.",
+            };
+          } else {
+            updatedQuizHistory.push(newQuizAttempt);
+          }
+        } else {
+          updatedQuizHistory.push(newQuizAttempt);
+        }
+
+        const newItems = [...prevItems];
+        newItems[itemIndex] = {
+          ...item,
+          quizHistory: updatedQuizHistory.sort((a, b) => b.timestamp - a.timestamp),
+          moduleCompletionStatus: updatedModuleCompletionStatus
+        };
+        return newItems;
+      });
       setReviewingQuiz(newQuizAttempt); 
       setCurriculumSubTab('quiz'); 
   }, [quiz, selectedHistoryItemId, currentQuizModuleInfo, targetLanguage]);
@@ -1294,17 +1297,16 @@ const App: React.FC = () => {
     setCurriculumSubTab('exam'); 
     setExamViewMode('results'); 
     
-    setHistoryItems(prevItems =>
-        prevItems.map(item => {
-            if (item.id === selectedHistoryItemId) {
-                return {
-                    ...item,
-                    examHistory: [...(item.examHistory || []), finalAttempt].sort((a,b) => b.timestamp - a.timestamp)
-                };
-            }
-            return item;
-        })
-    );
+    setHistoryItems(prevItems => {
+        const itemIndex = prevItems.findIndex(h => h.id === selectedHistoryItemId);
+        if (itemIndex === -1) return prevItems;
+        const newItems = [...prevItems];
+        newItems[itemIndex] = {
+            ...prevItems[itemIndex],
+            examHistory: [...(prevItems[itemIndex].examHistory || []), finalAttempt].sort((a,b) => b.timestamp - a.timestamp)
+        };
+        return newItems;
+    });
     if (autoSubmitted) {
         alert("Time's up! Your exam has been automatically submitted.");
     }
@@ -1508,9 +1510,13 @@ const App: React.FC = () => {
                 };
                 const newDecks = { ...prevDecks, [activeFlashcardModuleInfo.title]: updatedDeck };
                 
-                setHistoryItems(prevHist => prevHist.map(hItem => 
-                    hItem.id === selectedHistoryItemId ? { ...hItem, flashcardDecks: newDecks } : hItem
-                ));
+                setHistoryItems(prevHist => {
+                    const itemIndex = prevHist.findIndex(h => h.id === selectedHistoryItemId);
+                    if (itemIndex === -1) return prevHist;
+                    const newItems = [...prevHist];
+                    newItems[itemIndex] = { ...prevHist[itemIndex], flashcardDecks: newDecks };
+                    return newItems;
+                });
                 setCurrentFlashcardDeck(updatedDeck);
                 return newDecks;
             });
@@ -1563,9 +1569,13 @@ const App: React.FC = () => {
     const updatedDeck = { ...currentFlashcardDeck, cards: updatedCards };
     setFlashcardDecks(prev => {
         const newDecks = { ...prev, [currentFlashcardDeck.moduleId]: updatedDeck };
-        setHistoryItems(prevHist => prevHist.map(hItem => 
-            hItem.id === selectedHistoryItemId ? { ...hItem, flashcardDecks: newDecks } : hItem
-        ));
+        setHistoryItems(prevHist => {
+            const itemIndex = prevHist.findIndex(h => h.id === selectedHistoryItemId);
+            if (itemIndex === -1) return prevHist;
+            const newItems = [...prevHist];
+            newItems[itemIndex] = { ...prevHist[itemIndex], flashcardDecks: newDecks };
+            return newItems;
+        });
         return newDecks;
     });
     setCurrentFlashcardDeck(updatedDeck);
@@ -1581,9 +1591,13 @@ const App: React.FC = () => {
 
     setFlashcardDecks(prev => {
         const newDecks = { ...prev, [currentFlashcardDeck.moduleId]: updatedDeck };
-         setHistoryItems(prevHist => prevHist.map(hItem => 
-            hItem.id === selectedHistoryItemId ? { ...hItem, flashcardDecks: newDecks } : hItem
-        ));
+         setHistoryItems(prevHist => {
+            const itemIndex = prevHist.findIndex(h => h.id === selectedHistoryItemId);
+            if (itemIndex === -1) return prevHist;
+            const newItems = [...prevHist];
+            newItems[itemIndex] = { ...prevHist[itemIndex], flashcardDecks: newDecks };
+            return newItems;
+        });
         return newDecks;
     });
     setCurrentFlashcardDeck(updatedDeck);
@@ -1658,9 +1672,13 @@ const App: React.FC = () => {
     
     setFlashcardDecks(prev => {
         const newDecks = { ...prev, [currentFlashcardDeck.moduleId]: updatedDeck };
-        setHistoryItems(prevHist => prevHist.map(hItem => 
-            hItem.id === selectedHistoryItemId ? { ...hItem, flashcardDecks: newDecks } : hItem
-        ));
+        setHistoryItems(prevHist => {
+            const itemIndex = prevHist.findIndex(h => h.id === selectedHistoryItemId);
+            if (itemIndex === -1) return prevHist;
+            const newItems = [...prevHist];
+            newItems[itemIndex] = { ...prevHist[itemIndex], flashcardDecks: newDecks };
+            return newItems;
+        });
         return newDecks;
     });
     setCurrentFlashcardDeck(updatedDeck);
@@ -1807,11 +1825,13 @@ const App: React.FC = () => {
       if (resources) {
         setCurrentLearningResources(resources);
         // Update history item
-        setHistoryItems(prevItems =>
-          prevItems.map(item =>
-            item.id === selectedHistoryItemId ? { ...item, learningResources: resources } : item
-          )
-        );
+        setHistoryItems(prevItems => {
+          const itemIndex = prevItems.findIndex(h => h.id === selectedHistoryItemId);
+          if (itemIndex === -1) return prevItems;
+          const newItems = [...prevItems];
+          newItems[itemIndex] = { ...prevItems[itemIndex], learningResources: resources };
+          return newItems;
+        });
       } else {
         setFetchResourcesError("Failed to fetch learning resources. The AI might not have found relevant information or an issue occurred.");
       }
