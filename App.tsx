@@ -105,6 +105,31 @@ const App: React.FC = () => {
   // State for new LMS-style Material view
   const [selectedMaterialModuleIndex, setSelectedMaterialModuleIndex] = useState<number | null>(null);
 
+  // Performance optimizations
+  const currentLearningJourneyMemo = useMemo(() =>
+    historyItems.find(h => h.id === selectedHistoryItemId),
+  [historyItems, selectedHistoryItemId]);
+
+  const currentCurriculumModulesMap = useMemo(() => {
+    const map = new Map<string, { module: CurriculumModule, index: number }>();
+    if (currentLearningJourneyMemo && currentLearningJourneyMemo.curriculum && currentLearningJourneyMemo.curriculum.modules) {
+      currentLearningJourneyMemo.curriculum.modules.forEach((m, index) => {
+        map.set(m.title, { module: m, index });
+      });
+    }
+    return map;
+  }, [currentLearningJourneyMemo]);
+
+  const activeCurriculumModulesMap = useMemo(() => {
+    const map = new Map<string, { module: CurriculumModule, index: number }>();
+    if (curriculum && curriculum.modules) {
+      curriculum.modules.forEach((m, index) => {
+        map.set(m.title, { module: m, index });
+      });
+    }
+    return map;
+  }, [curriculum]);
+
 
   const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -701,8 +726,8 @@ const App: React.FC = () => {
       setError("Please load the module material first before generating a quiz.");
       setCurriculumSubTab('material'); 
       if (curriculum) {
-        const moduleIndex = curriculum.modules.findIndex(m => m.title === module.title);
-        if (moduleIndex !== -1) setSelectedMaterialModuleIndex(moduleIndex);
+        const modEntry = activeCurriculumModulesMap.get(module.title);
+        if (modEntry) setSelectedMaterialModuleIndex(modEntry.index);
       }
       return;
     }
@@ -851,7 +876,7 @@ const App: React.FC = () => {
     let targetQuestionSource: (QuizQuestion | ExamQuestion)[] | null = null;
     let contextModuleTitle: string | undefined;
     let contextModuleMaterialContent: string | undefined;
-    let currentLearningJourney = historyItems.find(h => h.id === selectedHistoryItemId);
+    let currentLearningJourney = currentLearningJourneyMemo;
 
 
     if (isExamQuestion) {
@@ -859,7 +884,7 @@ const App: React.FC = () => {
         contextModuleTitle = reviewingExam?.config.moduleTitle || activeExamModuleInfo?.title;
         contextModuleMaterialContent = activeExamModuleInfo?.moduleMaterial; 
         if (reviewingExam && !contextModuleMaterialContent && currentLearningJourney) {
-            const originalModule = currentLearningJourney.curriculum.modules.find(m => m.title === reviewingExam.config.moduleTitle);
+            const originalModule = currentCurriculumModulesMap.get(reviewingExam.config.moduleTitle)?.module;
             contextModuleMaterialContent = originalModule?.moduleMaterial;
         }
     } else {
@@ -867,7 +892,7 @@ const App: React.FC = () => {
         contextModuleTitle = reviewingQuiz?.moduleTitle || currentQuizModuleInfo?.title;
         contextModuleMaterialContent = currentQuizModuleInfo?.moduleMaterial; 
         if (reviewingQuiz && !contextModuleMaterialContent && currentLearningJourney) {
-            const originalModule = currentLearningJourney.curriculum.modules.find(m => m.title === reviewingQuiz.moduleTitle);
+            const originalModule = currentCurriculumModulesMap.get(reviewingQuiz.moduleTitle)?.module;
             contextModuleMaterialContent = originalModule?.moduleMaterial;
         }
     }
@@ -878,9 +903,9 @@ const App: React.FC = () => {
     }
 
     if (!contextModuleMaterialContent && currentLearningJourney && curriculum) { 
-        const moduleInCurriculum = currentLearningJourney.curriculum.modules.find(m => m.title === contextModuleTitle);
-        if (moduleInCurriculum) {
-            const moduleIndex = currentLearningJourney.curriculum.modules.indexOf(moduleInCurriculum);
+        const modEntry = currentCurriculumModulesMap.get(contextModuleTitle);
+        if (modEntry) {
+            const moduleIndex = modEntry.index;
             setViewMode('loading'); 
             const loadedMaterial = await handleLoadModuleDetails(moduleIndex); 
             setViewMode('results');
@@ -979,7 +1004,7 @@ const App: React.FC = () => {
   const handleRetakeQuiz = useCallback(async () => {
     let moduleToRetakeTitle: string | undefined;
     let moduleForRetake: CurriculumModule | undefined;
-    let currentLearningJourney = historyItems.find(h => h.id === selectedHistoryItemId);
+    let currentLearningJourney = currentLearningJourneyMemo;
 
 
     if (reviewingQuiz) { 
@@ -994,7 +1019,8 @@ const App: React.FC = () => {
         return;
     }
     
-    const moduleIndex = currentLearningJourney.curriculum.modules.findIndex(m => m.title === moduleToRetakeTitle);
+    const modEntry = currentCurriculumModulesMap.get(moduleToRetakeTitle);
+    const moduleIndex = modEntry ? modEntry.index : -1;
     if (moduleIndex === -1) {
         setError(`Module "${moduleToRetakeTitle}" not found in current curriculum.`);
         return;
@@ -1012,9 +1038,13 @@ const App: React.FC = () => {
             setCurriculumSubTab('material');
             return;
         }
-        currentLearningJourney = historyItems.find(h => h.id === selectedHistoryItemId);
-        const updatedCurriculumFromState = currentLearningJourney ? currentLearningJourney.curriculum : curriculum;
-        const reFetchedModule = updatedCurriculumFromState?.modules.find(m => m.title === moduleToRetakeTitle);
+        currentLearningJourney = currentLearningJourneyMemo;
+        let reFetchedModule: CurriculumModule | undefined;
+        if (currentLearningJourney) {
+            reFetchedModule = currentCurriculumModulesMap.get(moduleToRetakeTitle)?.module;
+        } else if (curriculum) {
+            reFetchedModule = activeCurriculumModulesMap.get(moduleToRetakeTitle)?.module;
+        }
 
         if (reFetchedModule && reFetchedModule.moduleMaterial) {
             moduleForRetake = reFetchedModule;
@@ -1039,7 +1069,7 @@ const App: React.FC = () => {
 
 
   const handleStartRetakeQuizFromHistoryList = useCallback(async (moduleTitleToRetake: string) => {
-    let currentLearningJourney = historyItems.find(h => h.id === selectedHistoryItemId);
+    let currentLearningJourney = currentLearningJourneyMemo;
     if (!currentLearningJourney || !selectedHistoryItemId || !curriculum) { 
         setError("Cannot retake quiz. Current learning session data is incomplete.");
         return;
@@ -1048,7 +1078,8 @@ const App: React.FC = () => {
     setError(null);
 
     let moduleForRetake: CurriculumModule | undefined;
-    const moduleIndex = currentLearningJourney.curriculum.modules.findIndex(m => m.title === moduleTitleToRetake);
+    const modEntry = currentCurriculumModulesMap.get(moduleTitleToRetake);
+    const moduleIndex = modEntry ? modEntry.index : -1;
 
     if (moduleIndex === -1) {
         setError(`Module "${moduleTitleToRetake}" not found in the current curriculum.`);
@@ -1067,9 +1098,13 @@ const App: React.FC = () => {
             setCurriculumSubTab('material');
             return;
         }
-        currentLearningJourney = historyItems.find(h => h.id === selectedHistoryItemId);
-        const updatedCurriculumFromState = currentLearningJourney ? currentLearningJourney.curriculum : curriculum; 
-        const reFetchedModule = updatedCurriculumFromState?.modules.find(m => m.title === moduleTitleToRetake);
+        currentLearningJourney = currentLearningJourneyMemo;
+        let reFetchedModule: CurriculumModule | undefined;
+        if (currentLearningJourney) {
+            reFetchedModule = currentCurriculumModulesMap.get(moduleTitleToRetake)?.module;
+        } else if (curriculum) {
+            reFetchedModule = activeCurriculumModulesMap.get(moduleTitleToRetake)?.module;
+        }
 
         if (reFetchedModule && reFetchedModule.moduleMaterial) {
             moduleForRetake = reFetchedModule;
@@ -1144,8 +1179,8 @@ const App: React.FC = () => {
   const handleReviewQuizFromHistory = useCallback((quizRecord: StoredQuizAttempt) => {
     setReviewingQuiz(quizRecord);
     setCurrentQuizQuestionIndex(0);
-    let currentLearningJourney = historyItems.find(h => h.id === selectedHistoryItemId);
-    const originalModule = currentLearningJourney?.curriculum.modules.find(m => m.title === quizRecord.moduleTitle);
+    let currentLearningJourney = currentLearningJourneyMemo;
+    const originalModule = currentCurriculumModulesMap.get(quizRecord.moduleTitle)?.module;
 
     if(originalModule && originalModule.moduleMaterial){
         setCurrentQuizModuleInfo({ title: quizRecord.moduleTitle, moduleMaterial: originalModule.moduleMaterial });
@@ -1155,19 +1190,19 @@ const App: React.FC = () => {
     setQuizAttemptCompleted(false); 
     setQuiz(null); 
     setCurriculumSubTab('quiz'); 
-  }, [historyItems, selectedHistoryItemId]);
+  }, [currentLearningJourneyMemo, currentCurriculumModulesMap]);
 
   const handleInitiateExamConfig = useCallback(async (module: CurriculumModule, initialConfig?: Partial<ExamConfiguration>) => {
     setViewMode('loading');
     setError(null);
     let material = module.moduleMaterial;
-    let currentLearningJourney = historyItems.find(h => h.id === selectedHistoryItemId);
+    let currentLearningJourney = currentLearningJourneyMemo;
 
 
     if (!material && currentLearningJourney && curriculum) { 
-        const moduleIndex = currentLearningJourney.curriculum.modules.findIndex(m => m.title === module.title);
-        if (typeof moduleIndex === 'number' && moduleIndex !== -1) {
-            material = await handleLoadModuleDetails(moduleIndex); 
+        const modEntry = currentCurriculumModulesMap.get(module.title);
+        if (modEntry) {
+            material = await handleLoadModuleDetails(modEntry.index);
         }
     }
 
@@ -1175,8 +1210,9 @@ const App: React.FC = () => {
         setError(`Module material for "${module.title}" must be loaded first. Please go to the 'Material' tab and load it.`);
         setCurriculumSubTab('material');
         if (curriculum) { 
-            const modIdx = curriculum.modules.findIndex(m => m.title === module.title);
-            if (modIdx !== -1) {
+            const modEntry = activeCurriculumModulesMap.get(module.title);
+            if (modEntry) {
+                const modIdx = modEntry.index;
                 setSelectedMaterialModuleIndex(modIdx); 
                  setCurriculum(prev => { 
                     if(!prev) return null;
@@ -1199,7 +1235,7 @@ const App: React.FC = () => {
 
 
   const handleStartRetakeExamFromHistory = useCallback(async (examAttemptToRetake: ExamAttempt) => {
-    let currentLearningJourney = historyItems.find(h => h.id === selectedHistoryItemId);
+    let currentLearningJourney = currentLearningJourneyMemo;
     if (!currentLearningJourney || !selectedHistoryItemId) {
         setError("Cannot retake exam. Current learning session data is incomplete.");
         setCurriculumSubTab('study_log'); 
@@ -1207,7 +1243,7 @@ const App: React.FC = () => {
     }
     
     const moduleTitleToRetake = examAttemptToRetake.config.moduleTitle;
-    const moduleForRetake = currentLearningJourney.curriculum.modules.find(m => m.title === moduleTitleToRetake);
+    const moduleForRetake = currentCurriculumModulesMap.get(moduleTitleToRetake)?.module;
 
     if (!moduleForRetake) {
         setError(`Module "${moduleTitleToRetake}" not found in the current curriculum.`);
@@ -1217,7 +1253,7 @@ const App: React.FC = () => {
     
     await handleInitiateExamConfig(moduleForRetake, examAttemptToRetake.config);
 
-  }, [selectedHistoryItemId, handleInitiateExamConfig, setError, historyItems]);
+  }, [selectedHistoryItemId, handleInitiateExamConfig, setError, currentLearningJourneyMemo, currentCurriculumModulesMap]);
 
   const handleSubmitExam = useCallback((autoSubmitted = false) => {
     if (!currentExamQuestions || !currentExamAttempt || !currentExamAttempt.config || !selectedHistoryItemId) return; 
@@ -1370,8 +1406,8 @@ const App: React.FC = () => {
     setExamViewMode('results'); 
     setCurriculumSubTab('exam'); 
 
-    let currentLearningJourney = historyItems.find(h => h.id === selectedHistoryItemId);
-    const originalModule = currentLearningJourney?.curriculum.modules.find(m => m.title === examRecord.config.moduleTitle);
+    let currentLearningJourney = currentLearningJourneyMemo;
+    const originalModule = currentCurriculumModulesMap.get(examRecord.config.moduleTitle)?.module;
     if(originalModule && originalModule.moduleMaterial){
         setActiveExamModuleInfo({ title: examRecord.config.moduleTitle, moduleMaterial: originalModule.moduleMaterial });
     } else {
@@ -1381,18 +1417,18 @@ const App: React.FC = () => {
     setCurrentExamQuestions(null);
     setCurrentExamAttempt(null);
     setExamAttemptCompleted(false);
-  }, [historyItems, selectedHistoryItemId]);
+  }, [currentLearningJourneyMemo, currentCurriculumModulesMap]);
 
   const handleInitiateFlashcardGeneration = useCallback(async (module: CurriculumModule) => {
     setViewMode('loading');
     setError(null);
     let material = module.moduleMaterial;
-    let currentLearningJourney = historyItems.find(h => h.id === selectedHistoryItemId);
+    let currentLearningJourney = currentLearningJourneyMemo;
 
     if (!material && currentLearningJourney && curriculum) { 
-        const moduleIndex = currentLearningJourney.curriculum.modules.findIndex(m => m.title === module.title);
-        if (moduleIndex !== -1) {
-            material = await handleLoadModuleDetails(moduleIndex);
+        const modEntry = currentCurriculumModulesMap.get(module.title);
+        if (modEntry) {
+            material = await handleLoadModuleDetails(modEntry.index);
         }
     }
 
@@ -1400,8 +1436,9 @@ const App: React.FC = () => {
         setError(`Module material for "${module.title}" must be loaded first.`);
         setCurriculumSubTab('material');
         if (curriculum) { 
-             const modIdx = curriculum.modules.findIndex(m => m.title === module.title);
-             if(modIdx !== -1) {
+             const modEntry = activeCurriculumModulesMap.get(module.title);
+             if(modEntry) {
+                const modIdx = modEntry.index;
                 setSelectedMaterialModuleIndex(modIdx); 
                 setCurriculum(prev => {
                     if(!prev) return null;
@@ -1788,7 +1825,7 @@ const App: React.FC = () => {
     // or if a new journey was just created, currentLearningResources would already be set.
     // The manual fetch is only if explicitly navigating to the tab and resources are missing for some reason.
     if (activeTab === 'resources' && selectedHistoryItemId && !isFetchingResources) {
-      const currentItem = historyItems.find(h => h.id === selectedHistoryItemId);
+      const currentItem = currentLearningJourneyMemo;
       if (currentItem) {
         if (currentItem.learningResources) {
             if (!currentLearningResources || currentLearningResources.content !== currentItem.learningResources.content) {
@@ -1801,7 +1838,7 @@ const App: React.FC = () => {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, selectedHistoryItemId, historyItems]); // Removed currentLearningResources, isFetchingResources, fetchResourcesError dependencies to simplify and avoid re-fetches
+  }, [activeTab, selectedHistoryItemId, currentLearningJourneyMemo]); // Removed currentLearningResources, isFetchingResources, fetchResourcesError dependencies to simplify and avoid re-fetches
 
 
 
@@ -1859,7 +1896,7 @@ const App: React.FC = () => {
     const heading1Size = "text-3xl sm:text-4xl md:text-5xl text-brand-blue dark:text-blue-300";
     const heading2Size = "text-2xl sm:text-3xl md:text-4xl text-brand-blue dark:text-blue-300";
 
-    const currentHistoryJourney = historyItems.find(item => item.id === selectedHistoryItemId);
+    const currentHistoryJourney = currentLearningJourneyMemo;
 
     const mainTabs: { name: ActiveTab, label: string, icon: React.ReactNode }[] = [
         { name: 'curriculum', label: 'Curriculum', icon: <Icons.BookOpen className="w-4 h-4 md:w-5 md:h-5" /> },
@@ -2492,7 +2529,7 @@ const App: React.FC = () => {
                                     <button
                                         key={deckModuleId}
                                         onClick={() => {
-                                            const moduleData = currentHistoryJourney?.curriculum.modules.find(m => m.title === deckModuleId);
+                                            const moduleData = currentCurriculumModulesMap.get(deckModuleId)?.module;
                                             if (moduleData) {
                                                 setActiveFlashcardModuleInfo({ title: moduleData.title, moduleMaterial: moduleData.moduleMaterial || "" });
                                                 setCurrentFlashcardDeck(deck);
