@@ -5,6 +5,16 @@
 import React, { memo } from 'react';
 import DOMPurify from 'dompurify';
 
+// Configure DOMPurify to enforce target="_blank" and rel="noopener noreferrer" on all links
+if (typeof DOMPurify.addHook === 'function') {
+  DOMPurify.addHook('afterSanitizeAttributes', function(node) {
+    if (node.tagName === 'A') {
+      node.setAttribute('target', '_blank');
+      node.setAttribute('rel', 'noopener noreferrer');
+    }
+  });
+}
+
 // Helper function to apply inline Markdown formatting to HTML
 export const applyInlineFormatting = (text: string): string => {
   if (!text) return "";
@@ -13,18 +23,7 @@ export const applyInlineFormatting = (text: string): string => {
   // Helper to strip common HTML attribute patterns from a string
   const stripHtmlAttributesFromString = (str: string): string => {
     let cleanedStr = str;
-    // Remove common quoted attributes: "attr=value", 'attr=value', attr="value", attr='value'
-    const attributePatterns = [
-        /(\s+|\b)(target|rel|class|style|title|id|href|src)\s*=\s*("[^"]*"|'[^']*')/gi,
-    ];
-    attributePatterns.forEach(pattern => {
-        cleanedStr = cleanedStr.replace(pattern, '');
-    });
     
-    // Remove potentially unclosed/malformed attributes if they look like ` "attr=` or ` attr="` at string end
-    cleanedStr = cleanedStr.replace(/(\s*")(target|rel|class|style|title|id|href|src)\s*=\s*$/gi, '$1'); // "attr=
-    cleanedStr = cleanedStr.replace(/(\s*)(target|rel|class|style|title|id|href|src)\s*=\s*("|\')$/gi, '$1'); // attr=" or attr='
-
     // Remove orphaned HTML tags often mistakenly added by AI
     cleanedStr = cleanedStr.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, '');
 
@@ -75,7 +74,7 @@ export const applyInlineFormatting = (text: string): string => {
         return match; 
     }
 
-    return `<a href="${urlToUse}" target="_blank" rel="noopener noreferrer" class="text-brand-orange hover:text-brand-red dark:text-orange-400 dark:hover:text-red-500 underline">${cleanedLinkText}</a>`;
+    return `<a href="${urlToUse}" class="text-brand-orange hover:text-brand-red dark:text-orange-400 dark:hover:text-red-500 underline">${cleanedLinkText}</a>`;
   });
 
   // Autolink URLs (should run after specific Markdown link parsing)
@@ -98,7 +97,7 @@ export const applyInlineFormatting = (text: string): string => {
     if (/^(javascript|data):/i.test(properUrl)) {
         return urlMatch; 
     }
-    return `<a href="${properUrl}" target="_blank" rel="noopener noreferrer" class="text-brand-orange hover:text-brand-red dark:text-orange-400 dark:hover:text-red-500 underline">${urlMatch}</a>`;
+    return `<a href="${properUrl}" class="text-brand-orange hover:text-brand-red dark:text-orange-400 dark:hover:text-red-500 underline">${urlMatch}</a>`;
   });
   
   // Bold: **text** or __text__
