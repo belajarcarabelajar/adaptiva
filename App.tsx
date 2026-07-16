@@ -1932,7 +1932,13 @@ const App: React.FC = () => {
         const quizModuleTitleForDisplay = currentQuizModuleInfo?.title || reviewingQuiz?.moduleTitle;
         const currentActiveQuizQuestionData = activeQuizForDisplay ? activeQuizForDisplay[currentQuizQuestionIndex] : null;
         
-        const quizToShowInResultOrReview = reviewingQuiz || (quizAttemptCompleted && activeQuizForDisplay ? { quiz: activeQuizForDisplay, score: activeQuizForDisplay.reduce((acc, q) => acc + (q.isCorrect ? 1 : 0), 0), moduleTitle: quizModuleTitleForDisplay || "" } as StoredQuizAttempt : null);
+        const quizToShowInResultOrReview = useMemo(() => {
+            return reviewingQuiz || (quizAttemptCompleted && activeQuizForDisplay ? {
+                quiz: activeQuizForDisplay,
+                score: activeQuizForDisplay.reduce((acc, q) => acc + (q.isCorrect ? 1 : 0), 0),
+                moduleTitle: quizModuleTitleForDisplay || ""
+            } as StoredQuizAttempt : null);
+        }, [reviewingQuiz, quizAttemptCompleted, activeQuizForDisplay, quizModuleTitleForDisplay]);
         const currentQuizQuestionForReviewView = quizToShowInResultOrReview ? quizToShowInResultOrReview.quiz[currentQuizQuestionIndex] : null;
         
         const examToShowInResultView = reviewingExam || (examAttemptCompleted ? currentExamAttempt : null);
@@ -2283,7 +2289,7 @@ const App: React.FC = () => {
                                     </div>
                                     <div className="p-3 md:p-4 bg-brand-lightGray dark:bg-gray-700 rounded-lg text-center">
                                         <p className="text-2xl md:text-4xl font-bold text-brand-red dark:text-red-400">
-                                            {quizToShowInResultOrReview.quiz.reduce((acc, q) => acc + (!q.isCorrect ? 1 : 0), 0)} 
+                                            {quizToShowInResultOrReview.quiz.length - quizToShowInResultOrReview.score}
                                         </p>
                                         <p className={`${largeTextBase} text-brand-black/80 dark:text-gray-300 text-sm md:text-base`}>Incorrect</p>
                                     </div>
