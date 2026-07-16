@@ -9,10 +9,6 @@ export default defineConfig({
     setupFiles: ['./setupTests.ts'],
     globals: true,
   },
-  define: {
-    'process.env.API_KEY': JSON.stringify('test_key'),
-    'process.env.GEMINI_API_KEY': JSON.stringify('test_key'),
-  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, '.'),

@@ -17,13 +17,13 @@ import {
   LearningResource 
 } from '../types';
 
-const API_KEY = process.env.API_KEY;
+// Use the proxy configured in vite.config.ts to avoid exposing the API key on the client side.
+const proxyBaseUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/gemini` : 'http://localhost:3000/api/gemini';
 
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable is not set. Please ensure it's configured in your environment.");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+const ai = new GoogleGenAI({
+  apiKey: 'proxy_key', // Dummy key; actual key is attached by the Vite proxy
+  httpOptions: { baseUrl: proxyBaseUrl }
+});
 
 // Model Constants updated to latest recommended models.
 const MODEL_CURRICULUM_OUTLINE = 'gemini-2.5-flash';
