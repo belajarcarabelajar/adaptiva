@@ -80,12 +80,12 @@ export const applyInlineFormatting = (text: string): string => {
 
   // Autolink URLs (should run after specific Markdown link parsing)
   const urlRegex = /(\b(https?|ftp):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])|(\bwww\.[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/gi;
-  formattedText = formattedText.replace(urlRegex, (urlMatch, p1, p2, p3) => {
+  formattedText = formattedText.replace(urlRegex, (urlMatch, p1, p2, p3, offset) => {
     // Check if this match is already part of an <a> tag's href or text created by the Markdown link rule above.
     // This is a simple check; more robust would involve parsing the HTML structure.
     const surroundingChars = formattedText.substring(
-        Math.max(0, formattedText.indexOf(urlMatch) - 10), 
-        formattedText.indexOf(urlMatch) + urlMatch.length + 10
+        Math.max(0, offset - 10),
+        offset + urlMatch.length + 10
     );
     if (surroundingChars.includes('href="') || surroundingChars.includes('>') && surroundingChars.includes('</a>')) { // Heuristic
       return urlMatch; // Already linked, skip
