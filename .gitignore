@@ -12,6 +12,18 @@ dist
 dist-ssr
 *.local
 
+# Bun
+.bun
+bun.lockb  # legacy binary lockfile; we use bun.lock (text JSON)
+
+# Per-app build outputs (monorepo)
+apps/*/dist
+apps/*/build
+
+# Per-app env files (monorepo)
+apps/*/.env
+apps/*/.env.local
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

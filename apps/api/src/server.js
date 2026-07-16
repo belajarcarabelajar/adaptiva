@@ -5,10 +5,16 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-dotenv.config({ path: '.env.local' });
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// After move: __dirname = /root/adaptiva/apps/api/src (3 levels deep from monorepo root)
+// - ../../../apps/web/dist = /root/adaptiva/apps/web/dist
+// - ../../.env.local = /root/adaptiva/.env.local (monorepo root)
+const WEB_DIST = path.resolve(__dirname, '../../../apps/web/dist');
+const ENV_FILE = path.resolve(__dirname, '../../.env.local');
+
+dotenv.config({ path: ENV_FILE });
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -33,10 +39,10 @@ app.use(
   })
 );
 
-app.use(express.static(path.join(__dirname, 'dist')));
+app.use(express.static(WEB_DIST));
 
 app.get(/(.*)/, (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  res.sendFile(path.join(WEB_DIST, 'index.html'));
 });
 
 app.listen(port, () => {
