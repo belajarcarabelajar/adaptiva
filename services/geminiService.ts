@@ -71,9 +71,9 @@ const parseGeminiJsonResponse = <T,>(responseText: string): T | null => {
 
   try {
     return JSON.parse(currentStrToParse) as T;
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.warn(
-      `Initial JSON.parse failed. Error: "${e.message || 'Unknown JSON parse error'}". Attempting fallbacks. Original text prefix (first 200 chars):`,
+      `Initial JSON.parse failed. Error: "${e instanceof Error && e.message ? e.message : 'Unknown JSON parse error'}". Attempting fallbacks. Original text prefix (first 200 chars):`,
       currentStrToParse.substring(0, 200) + (currentStrToParse.length > 200 ? "..." : "")
     );
   }
@@ -86,9 +86,9 @@ const parseGeminiJsonResponse = <T,>(responseText: string): T | null => {
       console.log("Attempting JSON.parse after markdown fence removal.");
       currentStrToParse = fencedContent; 
       return JSON.parse(currentStrToParse) as T;
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.warn(
-        `JSON.parse after markdown fence removal failed. Error: "${e.message || 'Unknown JSON parse error'}". Text prefix (first 200 chars):`,
+        `JSON.parse after markdown fence removal failed. Error: "${e instanceof Error && e.message ? e.message : 'Unknown JSON parse error'}". Text prefix (first 200 chars):`,
         currentStrToParse.substring(0, 200) + (currentStrToParse.length > 200 ? "..." : "")
       );
     }
@@ -105,9 +105,9 @@ const parseGeminiJsonResponse = <T,>(responseText: string): T | null => {
       console.log("Attempting JSON.parse after spreadsheet prefix removal.");
       currentStrToParse = spreadsheetCleanedStr; 
       return JSON.parse(currentStrToParse) as T;
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.warn(
-        `JSON.parse after spreadsheet prefix removal failed. Error: "${e.message || 'Unknown JSON parse error'}". Text prefix (first 200 chars):`,
+        `JSON.parse after spreadsheet prefix removal failed. Error: "${e instanceof Error && e.message ? e.message : 'Unknown JSON parse error'}". Text prefix (first 200 chars):`,
         currentStrToParse.substring(0, 200) + (currentStrToParse.length > 200 ? "..." : "")
       );
     }
@@ -122,9 +122,9 @@ const parseGeminiJsonResponse = <T,>(responseText: string): T | null => {
         try {
           console.log("Attempting JSON.parse on extracted object substring.");
           return JSON.parse(potentialObjectJson) as T;
-        } catch (e: any) {
+        } catch (e: unknown) {
           console.warn(
-            `JSON.parse on extracted object substring failed. Error: "${e.message || 'Unknown JSON parse error'}". Text prefix (first 200 chars):`,
+            `JSON.parse on extracted object substring failed. Error: "${e instanceof Error && e.message ? e.message : 'Unknown JSON parse error'}". Text prefix (first 200 chars):`,
             potentialObjectJson.substring(0, 200) + (potentialObjectJson.length > 200 ? "..." : "")
           );
         }
@@ -141,9 +141,9 @@ const parseGeminiJsonResponse = <T,>(responseText: string): T | null => {
          try {
           console.log("Attempting JSON.parse on extracted array substring.");
           return JSON.parse(potentialArrayJson) as T;
-        } catch (e: any) {
+        } catch (e: unknown) {
           console.warn(
-            `JSON.parse on extracted array substring failed. Error: "${e.message || 'Unknown JSON parse error'}". Text prefix (first 200 chars):`,
+            `JSON.parse on extracted array substring failed. Error: "${e instanceof Error && e.message ? e.message : 'Unknown JSON parse error'}". Text prefix (first 200 chars):`,
             potentialArrayJson.substring(0, 200) + (potentialArrayJson.length > 200 ? "..." : "")
           );
         }
