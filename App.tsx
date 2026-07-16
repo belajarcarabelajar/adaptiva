@@ -272,9 +272,9 @@ const App: React.FC = () => {
       const totalModules = currentItem.curriculum.modules.length;
       
       const completedModulesSummaries = Object.values(currentItem.moduleCompletionStatus)
-                                          .filter(status => status.summaryLoaded).length;
+                                          .filter((status: { summaryLoaded: boolean; quizTaken: boolean; }) => status.summaryLoaded).length;
       const completedQuizzes = Object.values(currentItem.moduleCompletionStatus)
-                                 .filter(status => status.quizTaken).length;
+                                 .filter((status: { summaryLoaded: boolean; quizTaken: boolean; }) => status.quizTaken).length;
       
       const totalPlanTasks = currentItem.sevenDayPlan.days.length;
       const completedPlanTasks = Object.values(currentItem.planTaskCompletionStatus)
@@ -2477,8 +2477,7 @@ const App: React.FC = () => {
                         ) : (
                             <div className="space-y-2">
                                 {/* FIX: Cast deckData to FlashcardDeck to allow property access. */}
-                                {Object.entries(currentHistoryJourney.flashcardDecks).map(([deckModuleId, deckData]) => {
-                                    const deck = deckData as FlashcardDeck;
+                                {Object.entries(currentHistoryJourney.flashcardDecks).map(([deckModuleId, deck]: [string, FlashcardDeck]) => {
                                     return (
                                     <button
                                         key={deckModuleId}
