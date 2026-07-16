@@ -229,18 +229,6 @@ const App: React.FC = () => {
             };
         });
         setHistoryItems(updatedHistory);
-        const currentHistItem = updatedHistory.find(h => h.id === selectedHistoryItemId);
-        if (currentHistItem) {
-            if (currentHistItem.flashcardDecks) {
-                setFlashcardDecks(currentHistItem.flashcardDecks);
-                if (activeFlashcardModuleInfo && currentHistItem.flashcardDecks[activeFlashcardModuleInfo.title]) {
-                    setCurrentFlashcardDeck(currentHistItem.flashcardDecks[activeFlashcardModuleInfo.title]);
-                }
-            }
-            if (currentHistItem.learningResources) {
-                setCurrentLearningResources(currentHistItem.learningResources);
-            }
-        }
       }
     } catch (e) {
       console.error("Failed to load data from localStorage:", e);
@@ -249,9 +237,24 @@ const App: React.FC = () => {
       localStorage.removeItem('adaptivaStudyDarkMode');
       localStorage.removeItem('adaptivaSidebarVisible');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); 
 
+  useEffect(() => {
+    if (selectedHistoryItemId) {
+      const currentHistItem = historyItems.find(h => h.id === selectedHistoryItemId);
+      if (currentHistItem) {
+          if (currentHistItem.flashcardDecks) {
+              setFlashcardDecks(currentHistItem.flashcardDecks);
+              if (activeFlashcardModuleInfo && currentHistItem.flashcardDecks[activeFlashcardModuleInfo.title]) {
+                  setCurrentFlashcardDeck(currentHistItem.flashcardDecks[activeFlashcardModuleInfo.title]);
+              }
+          }
+          if (currentHistItem.learningResources) {
+              setCurrentLearningResources(currentHistItem.learningResources);
+          }
+      }
+    }
+  }, [historyItems, selectedHistoryItemId, activeFlashcardModuleInfo]);
 
   useEffect(() => {
     try {
