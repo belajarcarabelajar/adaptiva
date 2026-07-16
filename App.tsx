@@ -1856,7 +1856,6 @@ const App: React.FC = () => {
 
     const currentHistoryJourney = historyItems.find(item => item.id === selectedHistoryItemId);
 
-    // FIX: Replace JSX.Element with React.ReactNode to avoid namespace errors.
     const mainTabs: { name: ActiveTab, label: string, icon: React.ReactNode }[] = [
         { name: 'curriculum', label: 'Curriculum', icon: <Icons.BookOpen className="w-4 h-4 md:w-5 md:h-5" /> },
         { name: 'plan', label: '7-Day Plan', icon: <Icons.CalendarDays className="w-4 h-4 md:w-5 md:h-5" /> },
@@ -2725,7 +2724,6 @@ const App: React.FC = () => {
         );
     }
     
-    // FIX: Replace JSX.Element with React.ReactNode to avoid namespace errors.
     const flashcardSubTabs: { name: FlashcardSubView, label: string, icon: React.ReactNode }[] = [
         { name: 'daftar', label: 'Daftar', icon: <Icons.QueueListIcon /> },
         { name: 'tumpukan', label: 'Tumpukan', icon: <Icons.RectangleStackIcon /> },
