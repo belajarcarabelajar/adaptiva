@@ -18,6 +18,7 @@ describe("AuthModal component", () => {
       signIn: mockSignIn,
       signOut: vi.fn(),
       refresh: vi.fn(),
+      updatePoints: vi.fn(),
     });
   });
 

@@ -42,6 +42,7 @@ export interface Session {
   refreshToken?: string;
   expiresAt: number;
   createdAt: number;
+  points?: number;
 }
 
 export interface GoogleTokenResponse {
@@ -163,13 +164,14 @@ export async function getSession(
 ): Promise<Session | null> {
   const cookies = parseCookies(request);
   const sid = cookies[SESSION_COOKIE];
-  if (!sid) return null;
+  if (!sid || !env.SESSIONS) return null;
   const raw = await env.SESSIONS.get(`sess:${sid}`);
   if (!raw) return null;
   try {
     const session = JSON.parse(raw) as Session;
+    if (session.points === undefined) session.points = DEFAULT_INITIAL_POINTS;
     // Sliding TTL: keep active sessions alive.
-    await env.SESSIONS.put(`sess:${sid}`, raw, {
+    await env.SESSIONS.put(`sess:${sid}`, JSON.stringify(session), {
       expirationTtl: SESSION_TTL_SECONDS,
     });
     return session;
@@ -180,16 +182,46 @@ export async function getSession(
 
 export async function createSession(env: Env, session: Session): Promise<string> {
   const sid = randomToken(32);
-  await env.SESSIONS.put(`sess:${sid}`, JSON.stringify(session), {
+  const newSession: Session = {
+    ...session,
+    points: session.points ?? DEFAULT_INITIAL_POINTS,
+  };
+  await env.SESSIONS.put(`sess:${sid}`, JSON.stringify(newSession), {
     expirationTtl: SESSION_TTL_SECONDS,
   });
   return sid;
 }
 
+export async function deductUserPoints(
+  request: Request,
+  env: Env,
+  cost: number,
+): Promise<{ success: boolean; remainingPoints: number; session: Session | null }> {
+  const cookies = parseCookies(request);
+  const sid = cookies[SESSION_COOKIE];
+  if (!sid || !env.SESSIONS) return { success: false, remainingPoints: 0, session: null };
+  const raw = await env.SESSIONS.get(`sess:${sid}`);
+  if (!raw) return { success: false, remainingPoints: 0, session: null };
+  try {
+    const session = JSON.parse(raw) as Session;
+    if (session.points === undefined) session.points = DEFAULT_INITIAL_POINTS;
+    if (session.points < cost) {
+      return { success: false, remainingPoints: session.points, session };
+    }
+    session.points -= cost;
+    await env.SESSIONS.put(`sess:${sid}`, JSON.stringify(session), {
+      expirationTtl: SESSION_TTL_SECONDS,
+    });
+    return { success: true, remainingPoints: session.points, session };
+  } catch {
+    return { success: false, remainingPoints: 0, session: null };
+  }
+}
+
 export async function deleteSession(request: Request, env: Env): Promise<void> {
   const cookies = parseCookies(request);
   const sid = cookies[SESSION_COOKIE];
-  if (!sid) return;
+  if (!sid || !env.SESSIONS) return;
   await env.SESSIONS.delete(`sess:${sid}`);
 }
 

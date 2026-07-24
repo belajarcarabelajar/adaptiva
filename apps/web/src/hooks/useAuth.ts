@@ -14,6 +14,7 @@ export interface AuthUser {
   email: string;
   name: string;
   picture?: string;
+  points: number;
 }
 
 export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
@@ -25,6 +26,7 @@ export interface UseAuthResult {
   signIn: (returnTo?: string) => void;
   signOut: () => void;
   refresh: () => Promise<void>;
+  updatePoints: (newPoints: number) => void;
 }
 
 let inflight: Promise<AuthUser | null> | null = null;
@@ -149,5 +151,11 @@ export function useAuth(): UseAuthResult {
     window.location.href = "/api/auth/logout";
   }, []);
 
-  return { user, status, error, signIn, signOut, refresh };
+  const updatePoints = useCallback((newPoints: number) => {
+    if (lastUser) {
+      setUserShared({ ...lastUser, points: newPoints });
+    }
+  }, []);
+
+  return { user, status, error, signIn, signOut, refresh, updatePoints };
 }

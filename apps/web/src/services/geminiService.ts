@@ -20,10 +20,17 @@ import {
 // Use the proxy configured in vite.config.ts to avoid exposing the API key on the client side.
 const proxyBaseUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/gemini` : 'http://localhost:3000/api/gemini';
 
-const ai = new GoogleGenAI({
-  apiKey: 'proxy_key', // Dummy key; actual key is attached by the Vite proxy
-  httpOptions: { baseUrl: proxyBaseUrl }
-});
+export const getAiClient = (actionName = 'default') => {
+  return new GoogleGenAI({
+    apiKey: 'proxy_key', // Dummy key; actual key is attached by the Vite proxy
+    httpOptions: {
+      baseUrl: proxyBaseUrl,
+      headers: { 'x-adaptiva-action': actionName } as Record<string, string>,
+    },
+  });
+};
+
+const ai = getAiClient('default');
 
 // Model Constants — all routes go through gemini-3.5-flash.
 // Pro tier is intentionally not used: the current API key has zero quota
@@ -55,6 +62,9 @@ const callWithRetries = async <T,>(apiCallFn: () => Promise<T>, callName: string
       const errStr = String(error);
       if (errStr.includes("401") || errStr.toLowerCase().includes("unauthorized")) {
         throw new Error("unauthorized: Sign in required to use AI features.");
+      }
+      if (errStr.includes("429") || errStr.includes("insufficient_points")) {
+        throw new Error("insufficient_points: Poin Anda tidak cukup untuk melakukan aksi ini.");
       }
       attempts++;
       console.warn(`API call "${callName}" failed on attempt ${attempts}. Error:`, error);
@@ -222,7 +232,7 @@ export const generateInitialCurriculumOutline = async (
   
   try {
     const response = await callWithRetries<GenerateContentResponse>(
-      () => ai.models.generateContent({
+      () => getAiClient('curriculum').models.generateContent({
         model: MODEL_CURRICULUM_OUTLINE,
         contents: prompt,
         config: { responseMimeType: "application/json" } 
@@ -346,7 +356,7 @@ The material should be comprehensive enough for thorough understanding of ${modu
 
   try {
     const response = await callWithRetries<GenerateContentResponse>(
-      () => ai.models.generateContent({
+      () => getAiClient('module').models.generateContent({
         model: MODEL_MODULE_SUMMARY,
         contents: prompt,
         config: { responseMimeType: "application/json" }
@@ -459,7 +469,7 @@ export const generateSevenDayPlan = async (
 
   try {
     const response = await callWithRetries<GenerateContentResponse>(
-      () => ai.models.generateContent({
+      () => getAiClient('curriculum').models.generateContent({
         model: MODEL_SEVEN_DAY_PLAN,
         contents: prompt,
         config: { responseMimeType: "application/json" } 
@@ -535,7 +545,7 @@ export const generateQuiz = async (
 
   try {
     const response = await callWithRetries<GenerateContentResponse>(
-      () => ai.models.generateContent({
+      () => getAiClient('quiz').models.generateContent({
         model: MODEL_QUIZ_GENERATION,
         contents: prompt,
         config: { responseMimeType: "application/json" } 
@@ -611,7 +621,7 @@ export const generateDetailedQuizExplanation = async (
   
   try {
     const response = await callWithRetries<GenerateContentResponse>(
-      () => ai.models.generateContent({
+      () => getAiClient('quiz').models.generateContent({
         model: MODEL_QUIZ_EXPLANATION,
         contents: prompt,
         config: { responseMimeType: "application/json" }
@@ -704,7 +714,7 @@ export const generateExamQuestions = async (
 
   try {
     const response = await callWithRetries<GenerateContentResponse>(
-      () => ai.models.generateContent({
+      () => getAiClient('exam').models.generateContent({
         model: MODEL_EXAM_QUESTIONS, 
         contents: prompt,
         config: { responseMimeType: "application/json" } 
@@ -793,7 +803,7 @@ export const generateFlashcardsFromMaterial = async (
 
   try {
     const response = await callWithRetries<GenerateContentResponse>(
-      () => ai.models.generateContent({
+      () => getAiClient('flashcard').models.generateContent({
         model: MODEL_FLASHCARDS, 
         contents: prompt,
         config: { responseMimeType: "application/json" } 
@@ -840,7 +850,7 @@ export const startChatSession = (
     },
   };
 
-  const chat = ai.chats.create(chatConfig);
+  const chat = getAiClient('tutor').chats.create(chatConfig);
   return chat;
 };
 

@@ -66,12 +66,26 @@ async function proxyRequest(request: Request, env: Env, params: PagesContext["pa
     );
   }
 
-  // Require Google Sign-in session to access AI generation features
-  const session = await getSession(request, env as unknown as AuthEnv);
-  if (!session) {
+  // Determine point cost from x-adaptiva-action header
+  const action = request.headers.get("x-adaptiva-action") || "default";
+  const cost = ACTION_POINT_COSTS[action] ?? 5;
+
+  const pointResult = await deductUserPoints(request, env as unknown as AuthEnv, cost);
+  if (!pointResult.success) {
+    if (!pointResult.session) {
+      return new Response(
+        JSON.stringify({ error: "unauthorized", message: "Sign in with Google required to use AI features." }),
+        { status: 401, headers: { "content-type": "application/json" } }
+      );
+    }
     return new Response(
-      JSON.stringify({ error: "unauthorized", message: "Sign in with Google required to use AI features." }),
-      { status: 401, headers: { "content-type": "application/json" } }
+      JSON.stringify({
+        error: "insufficient_points",
+        message: `Poin Anda tidak cukup (${pointResult.remainingPoints} Poin). Membutuhkan ${cost} Poin.`,
+        remainingPoints: pointResult.remainingPoints,
+        requiredPoints: cost,
+      }),
+      { status: 429, headers: { "content-type": "application/json" } }
     );
   }
 
@@ -88,9 +102,12 @@ async function proxyRequest(request: Request, env: Env, params: PagesContext["pa
   };
 
   const upstream = await fetch(url, init);
+  const resHeaders = new Headers(upstream.headers);
+  resHeaders.set("x-adaptiva-points", String(pointResult.remainingPoints));
+
   return new Response(upstream.body, {
     status: upstream.status,
-    headers: upstream.headers,
+    headers: resHeaders,
   });
 }
 

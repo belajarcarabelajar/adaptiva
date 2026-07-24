@@ -30,6 +30,8 @@ import ExamTakingView from './components/ExamTakingView';
 import ExamResultsView from './components/ExamResultsView';
 import AuthButton from './components/AuthButton';
 import AuthModal from './components/AuthModal';
+import PointsBadge from './components/PointsBadge';
+import InsufficientPointsModal from './components/InsufficientPointsModal';
 import { useAuth } from './hooks/useAuth';
 
 
@@ -40,6 +42,12 @@ type ExamViewMode = 'config' | 'taking' | 'results' | 'history_summary' | 'modul
 const App: React.FC = () => {
   const { user, status } = useAuth();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isPointsModalOpen, setIsPointsModalOpen] = useState<boolean>(false);
+  const [pointsModalInfo, setPointsModalInfo] = useState<{ required: number; remaining: number; action: string }>({
+    required: 10,
+    remaining: 0,
+    action: "fitur ini",
+  });
   const [viewMode, setViewMode] = useState<ViewMode>('input');
   const [activeTab, setActiveTab] = useState<ActiveTab>('curriculum');
   const [curriculumSubTab, setCurriculumSubTab] = useState<CurriculumSubTab>('syllabus');
@@ -441,6 +449,11 @@ const App: React.FC = () => {
       setIsAuthModalOpen(true);
       return;
     }
+    if ((user.points ?? 100) < 20) {
+      setPointsModalInfo({ required: 20, remaining: user.points ?? 0, action: "Generate Kurikulum & 7-Day Plan" });
+      setIsPointsModalOpen(true);
+      return;
+    }
     setViewMode('loading');
     setLoadingStepMessage("Analyzing topic and crafting curriculum outline...");
     setError(null);
@@ -559,6 +572,11 @@ const App: React.FC = () => {
   const handleLoadModuleDetails = useCallback(async (moduleIndex: number): Promise<string | null> => {
     if (status !== 'authenticated' || !user) {
       setIsAuthModalOpen(true);
+      return null;
+    }
+    if ((user.points ?? 100) < 5) {
+      setPointsModalInfo({ required: 5, remaining: user.points ?? 0, action: "Generate Materi Modul" });
+      setIsPointsModalOpen(true);
       return null;
     }
     if (!curriculum || !curriculum.modules[moduleIndex] || !selectedHistoryItemId) return null;
@@ -749,6 +767,11 @@ const App: React.FC = () => {
   const handleGenerateQuiz = useCallback(async (module: CurriculumModule) => {
     if (status !== 'authenticated' || !user) {
       setIsAuthModalOpen(true);
+      return;
+    }
+    if ((user.points ?? 100) < 10) {
+      setPointsModalInfo({ required: 10, remaining: user.points ?? 0, action: "Generate Kuis" });
+      setIsPointsModalOpen(true);
       return;
     }
     if (!module.moduleMaterial) {
@@ -1342,6 +1365,11 @@ const App: React.FC = () => {
       setIsAuthModalOpen(true);
       return;
     }
+    if ((user.points ?? 100) < 15) {
+      setPointsModalInfo({ required: 15, remaining: user.points ?? 0, action: "Generate Ujian" });
+      setIsPointsModalOpen(true);
+      return;
+    }
     if (!activeExamModuleInfo || !activeExamModuleInfo.moduleMaterial) {
         setError("Cannot generate exam: Active module information is missing.");
         setCurriculumSubTab('material'); 
@@ -1505,6 +1533,11 @@ const App: React.FC = () => {
   const handleGenerateFlashcards = useCallback(async () => {
     if (status !== 'authenticated' || !user) {
       setIsAuthModalOpen(true);
+      return;
+    }
+    if ((user.points ?? 100) < 5) {
+      setPointsModalInfo({ required: 5, remaining: user.points ?? 0, action: "Generate Kartu Kilat" });
+      setIsPointsModalOpen(true);
       return;
     }
     if (!activeFlashcardModuleInfo || !activeFlashcardModuleInfo.moduleMaterial || !selectedHistoryItemId) {
@@ -3077,7 +3110,8 @@ const App: React.FC = () => {
                 <h1 className="text-lg font-semibold text-brand-blue dark:text-blue-300 truncate">
                     {topic || "Adaptiva Study"}
                 </h1>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2">
+                    <PointsBadge />
                     <button
                         onClick={toggleDarkMode}
                         className="p-2 rounded-md text-brand-blue dark:text-blue-300 hover:bg-brand-lightGray dark:hover:bg-gray-700"
@@ -3100,7 +3134,8 @@ const App: React.FC = () => {
             )}
 
             <div className={`p-2 sm:p-3 md:p-4 lg:p-6 ${isSidebarVisible && typeof window !== 'undefined' && window.innerWidth >= 768 ? 'md:ml-0' : 'md:ml-0'}`}>
-                <div className="hidden md:flex justify-end mb-3">
+                <div className="hidden md:flex justify-end items-center gap-2 mb-3">
+                    <PointsBadge />
                     <AuthButton />
                 </div>
                  {renderMainContent()}
@@ -3108,6 +3143,13 @@ const App: React.FC = () => {
             <AuthModal
               isOpen={isAuthModalOpen}
               onClose={() => setIsAuthModalOpen(false)}
+            />
+            <InsufficientPointsModal
+              isOpen={isPointsModalOpen}
+              onClose={() => setIsPointsModalOpen(false)}
+              requiredPoints={pointsModalInfo.required}
+              remainingPoints={pointsModalInfo.remaining}
+              actionName={pointsModalInfo.action}
             />
         </main>
     </div>

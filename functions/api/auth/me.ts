@@ -22,6 +22,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       email: session.email,
       name: session.name,
       picture: session.picture,
+      points: session.points ?? 100,
     },
   });
 };
