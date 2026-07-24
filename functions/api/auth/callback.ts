@@ -32,71 +32,83 @@ function safeNext(raw: string | null): string {
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
-  const { env, request } = context;
-
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.SESSIONS) {
-    return redirectResponse("/?auth_error=not_configured");
-  }
-
-  const url = new URL(request.url);
-  const code = url.searchParams.get("code");
-  const state = url.searchParams.get("state");
-  const errorParam = url.searchParams.get("error");
-  const next = safeNext(url.searchParams.get("next"));
-
-  if (errorParam) {
-    return redirectResponse(`/?auth_error=${encodeURIComponent(errorParam)}`);
-  }
-
-  if (!code || !state) {
-    return new Response("Missing code or state", { status: 400 });
-  }
-
-  // One-shot, constant-time state check. consumeState deletes the key.
-  if (!(await consumeState(env, state))) {
-    return new Response("Invalid or expired state", { status: 400 });
-  }
-
-  const origin = getOrigin(request, env);
-
-  let tokens;
   try {
-    tokens = await exchangeCode(origin, env, code);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "token exchange failed";
-    return new Response(`OAuth error: ${msg}`, { status: 502 });
+    const { env, request } = context;
+
+    if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.SESSIONS) {
+      return redirectResponse("/?auth_error=not_configured");
+    }
+
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const errorParam = url.searchParams.get("error");
+    const next = safeNext(url.searchParams.get("next"));
+
+    if (errorParam) {
+      return redirectResponse(`/?auth_error=${encodeURIComponent(errorParam)}`);
+    }
+
+    if (!code || !state) {
+      return redirectResponse("/?auth_error=missing_code_or_state");
+    }
+
+    // One-shot, constant-time state check. consumeState deletes the key.
+    if (!(await consumeState(env, state))) {
+      return redirectResponse("/?auth_error=invalid_or_expired_state");
+    }
+
+    const origin = getOrigin(request, env);
+
+    let tokens;
+    try {
+      tokens = await exchangeCode(origin, env, code);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "token exchange failed";
+      console.error("OAuth token exchange error:", msg);
+      return redirectResponse(`/?auth_error=${encodeURIComponent("token_exchange_failed")}`);
+    }
+
+    // Prefer userinfo endpoint (authoritative, server-fetched). Fall back to
+    // id_token claims if userinfo fails for some reason.
+    let user;
+    try {
+      user = await fetchUserInfo(tokens.access_token);
+    } catch (e) {
+      console.warn("fetchUserInfo failed, attempting decodeIdTokenUnsafe:", e);
+      try {
+        user = decodeIdTokenUnsafe(tokens.id_token);
+      } catch (err) {
+        console.error("decodeIdTokenUnsafe failed:", err);
+        return redirectResponse("/?auth_error=user_info_failed");
+      }
+    }
+
+    if (!user || !user.email || !user.email_verified) {
+      return redirectResponse(`/?auth_error=${encodeURIComponent("email_not_verified")}`);
+    }
+    if (!isEmailAllowed(env, user.email)) {
+      return redirectResponse(`/?auth_error=${encodeURIComponent("domain_not_allowed")}`);
+    }
+
+    const now = Date.now();
+    const session: Session = {
+      userId: user.sub || user.email,
+      email: user.email,
+      name: user.name || user.email,
+      picture: user.picture,
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresAt: now + (tokens.expires_in || 3600) * 1000,
+      createdAt: now,
+    };
+
+    const sid = await createSession(env, session);
+    const cookie = buildSessionCookie(sid, isHttps(request, env));
+
+    return redirectResponse(next, 302, { "Set-Cookie": cookie });
+  } catch (err) {
+    console.error("Unhandled error in callback handler:", err);
+    return redirectResponse("/?auth_error=unexpected_callback_error");
   }
-
-  // Prefer userinfo endpoint (authoritative, server-fetched). Fall back to
-  // id_token claims if userinfo fails for some reason.
-  let user;
-  try {
-    user = await fetchUserInfo(tokens.access_token);
-  } catch {
-    user = decodeIdTokenUnsafe(tokens.id_token);
-  }
-
-  if (!user.email || !user.email_verified) {
-    return redirectResponse(`/?auth_error=${encodeURIComponent("email_not_verified")}`);
-  }
-  if (!isEmailAllowed(env, user.email)) {
-    return redirectResponse(`/?auth_error=${encodeURIComponent("domain_not_allowed")}`);
-  }
-
-  const now = Date.now();
-  const session: Session = {
-    userId: user.sub,
-    email: user.email,
-    name: user.name || user.email,
-    picture: user.picture,
-    accessToken: tokens.access_token,
-    refreshToken: tokens.refresh_token,
-    expiresAt: now + tokens.expires_in * 1000,
-    createdAt: now,
-  };
-
-  const sid = await createSession(env, session);
-  const cookie = buildSessionCookie(sid, isHttps(request, env));
-
-  return redirectResponse(next, 302, { "Set-Cookie": cookie });
 };

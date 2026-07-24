@@ -310,11 +310,17 @@ export async function exchangeCode(
  * directly from the client.
  */
 export function decodeIdTokenUnsafe(idToken: string): GoogleUserInfo {
+  if (!idToken) throw new Error("Missing id_token");
   const parts = idToken.split(".");
   if (parts.length !== 3) throw new Error("Malformed id_token");
   const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
   const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
-  const json = atob(padded);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  const json = new TextDecoder().decode(bytes);
   return JSON.parse(json) as GoogleUserInfo;
 }
 
