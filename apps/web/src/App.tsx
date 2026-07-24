@@ -40,7 +40,7 @@ type ExamViewMode = 'config' | 'taking' | 'results' | 'history_summary' | 'modul
 
 
 const App: React.FC = () => {
-  const { user, status } = useAuth();
+  const { user, status, refresh } = useAuth();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [isPointsModalOpen, setIsPointsModalOpen] = useState<boolean>(false);
   const [pointsModalInfo, setPointsModalInfo] = useState<{ required: number; remaining: number; action: string }>({
@@ -566,8 +566,9 @@ const App: React.FC = () => {
       setViewMode('error');
     } finally {
         setLoadingStepMessage(null);
+        void refresh();
     }
-  }, [status, user, resetQuizState, resetExamState, resetFlashcardState, resetResourcesState, setIsSidebarVisible]); 
+  }, [status, user, refresh, resetQuizState, resetExamState, resetFlashcardState, resetResourcesState, setIsSidebarVisible]); 
   
   const handleLoadModuleDetails = useCallback(async (moduleIndex: number): Promise<string | null> => {
     if (status !== 'authenticated' || !user) {
@@ -665,8 +666,10 @@ const App: React.FC = () => {
         return { ...prev, modules: updatedModules };
       });
       return null;
+    } finally {
+      void refresh();
     }
-  }, [curriculum, targetLanguage, selectedHistoryItemId]);
+  }, [status, user, refresh, curriculum, targetLanguage, selectedHistoryItemId]);
 
 
   const handleSelectHistoryItem = useCallback((id: string) => {
