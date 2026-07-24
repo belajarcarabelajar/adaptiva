@@ -134,7 +134,7 @@ const AuthButton: React.FC = () => {
             {initial}
           </span>
         )}
-        <span className="hidden sm:inline text-sm font-medium text-gray-800 dark:text-gray-200 max-w-[12ch] truncate">
+        <span className="hidden sm:inline text-sm font-medium text-gray-800 dark:text-gray-200">
           {user.name}
         </span>
       </button>

@@ -65,4 +65,29 @@ describe("AuthButton component", () => {
     expect(screen.getByText("jane@example.com")).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument();
   });
+
+  it("displays full account name on desktop without truncation or max-width restriction", async () => {
+    const mockUser = {
+      id: "456",
+      email: "alexander.supertramp@example.com",
+      name: "Alexander Supertramp The Second",
+      picture: "https://example.com/alexander.jpg",
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ user: mockUser }),
+    } as Response);
+
+    render(<AuthButton />);
+
+    await waitFor(() => {
+      const nameEl = screen.getByText("Alexander Supertramp The Second");
+      expect(nameEl).toBeInTheDocument();
+      expect(nameEl.className).not.toContain("truncate");
+      expect(nameEl.className).not.toContain("max-w-[12ch]");
+    });
+  });
 });
+
