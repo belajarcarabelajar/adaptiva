@@ -15,6 +15,7 @@ describe('ExamTakingView component', () => {
     maxPoints: 10,
     scoreAwarded: 0,
     explanation: 'TypeScript is a strongly typed programming language that builds on JavaScript.',
+    difficulty: 3,
   };
 
   it('renders question text, options, and question index', () => {

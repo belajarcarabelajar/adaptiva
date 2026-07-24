@@ -15,6 +15,10 @@ describe('HistorySidebar component', () => {
       initialTutorGreeting: 'Hello',
       timestamp: 1600000000000,
       overallProgress: 75,
+      moduleCompletionStatus: {},
+      planTaskCompletionStatus: {},
+      journeyCompleted: false,
+      quizHistory: [],
     },
     {
       id: 'h2',
@@ -25,6 +29,10 @@ describe('HistorySidebar component', () => {
       initialTutorGreeting: 'Halo',
       timestamp: 1700000000000,
       overallProgress: 25,
+      moduleCompletionStatus: {},
+      planTaskCompletionStatus: {},
+      journeyCompleted: false,
+      quizHistory: [],
     },
   ];
 

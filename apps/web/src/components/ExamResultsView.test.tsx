@@ -7,8 +7,8 @@ import { ExamAttempt } from '../types';
 describe('ExamResultsView component', () => {
   const sampleAttempt: ExamAttempt = {
     id: 'attempt-1',
-    moduleId: 'ts-basics',
     timestamp: Date.now(),
+    startTime: Date.now(),
     config: {
       moduleId: 'ts-basics',
       moduleTitle: 'TypeScript Basics',
@@ -28,6 +28,7 @@ describe('ExamResultsView component', () => {
         scoreAwarded: 10,
         maxPoints: 10,
         explanation: 'TypeScript is typed JS.',
+        difficulty: 3,
       },
       {
         id: 'q2',
@@ -40,6 +41,7 @@ describe('ExamResultsView component', () => {
         scoreAwarded: 0,
         maxPoints: 10,
         explanation: '',
+        difficulty: 3,
       },
     ],
     totalScore: 10,
