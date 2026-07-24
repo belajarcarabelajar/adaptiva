@@ -50,14 +50,15 @@ const HistorySidebar: React.FC<HistorySidebarProps> = memo(({
             fixed inset-y-0 left-0 z-40 bg-brand-lightGray dark:bg-brand-black flex flex-col
             shadow-lg border-r border-brand-mediumGray dark:border-gray-700
             transition-all duration-300 ease-in-out
-            md:relative md:h-screen md:sticky md:top-0 md:flex-shrink-0
-            ${isVisible ? 'translate-x-0 w-64 p-4' : '-translate-x-full w-64 p-4 md:w-0 md:p-0 md:opacity-0 md:border-none md:overflow-hidden'}
+            md:relative md:h-full md:flex-shrink-0
+            ${isVisible ? 'translate-x-0 w-64' : '-translate-x-full w-64 md:w-0 md:opacity-0 md:border-none md:overflow-hidden'}
         `}
         aria-label="History Sidebar"
         aria-hidden={!isVisible && typeof window !== 'undefined' && window.innerWidth >= 768}
     >
       <div className={`flex flex-col h-full ${(!isVisible && typeof window !== 'undefined' && window.innerWidth >= 768) ? 'invisible' : ''}`}>
-        <div className="mb-4 flex justify-between items-start">
+        {/* Header */}
+        <div className="p-4 pb-3 flex justify-between items-start">
           <div className="flex-grow">
               <h2 className="text-xl font-semibold text-brand-blue dark:text-blue-300 mb-1 flex items-center">
               <Icons.ArchiveBoxIcon className="w-5 h-5 mr-2 text-brand-blue dark:text-blue-300" />
@@ -80,8 +81,8 @@ const HistorySidebar: React.FC<HistorySidebarProps> = memo(({
             </button>
             {/* Desktop-only close button inside the sidebar */}
             <button
-                onClick={onCloseMobile} // This prop effectively sets isSidebarVisible to false
-                className="p-1.5 rounded-full hover:bg-brand-mediumGray dark:hover:bg-gray-700 text-brand-blue dark:text-blue-300 transition-colors hidden md:block" // hidden by default, block on md+
+                onClick={onCloseMobile}
+                className="p-1.5 rounded-full hover:bg-brand-mediumGray dark:hover:bg-gray-700 text-brand-blue dark:text-blue-300 transition-colors hidden md:block"
                 title="Close Sidebar"
                 aria-label="Close Sidebar"
             >
@@ -90,25 +91,29 @@ const HistorySidebar: React.FC<HistorySidebarProps> = memo(({
           </div>
         </div>
 
-        <button
-          onClick={handleNewSessionClick}
-          className="w-full flex items-center justify-center mb-3 px-4 py-2 bg-brand-blue hover:bg-[#004175] dark:hover:bg-blue-700 text-brand-white font-semibold rounded-lg text-sm transition-colors"
-        >
-          <Icons.PlusCircleIcon className="w-5 h-5 mr-2" />
-          New Learning Session
-        </button>
-        
-        {historyItems.length > 0 && (
+        {/* Action Buttons */}
+        <div className="px-4 pb-3">
           <button
-            onClick={onClearHistory}
-            className="w-full flex items-center justify-center mb-4 px-4 py-2 bg-brand-red hover:bg-[#A30C0E] dark:hover:bg-red-700 text-brand-white font-semibold rounded-lg text-sm transition-colors"
+            onClick={handleNewSessionClick}
+            className="w-full flex items-center justify-center mb-2 px-4 py-2 bg-brand-blue hover:bg-[#004175] dark:hover:bg-blue-700 text-brand-white font-semibold rounded-lg text-sm transition-colors"
           >
-            <Icons.TrashIcon className="w-5 h-5 mr-2" />
-            Clear All History
+            <Icons.PlusCircleIcon className="w-5 h-5 mr-2" />
+            New Learning Session
           </button>
-        )}
+          
+          {historyItems.length > 0 && (
+            <button
+              onClick={onClearHistory}
+              className="w-full flex items-center justify-center px-4 py-2 bg-brand-red hover:bg-[#A30C0E] dark:hover:bg-red-700 text-brand-white font-semibold rounded-lg text-sm transition-colors"
+            >
+              <Icons.TrashIcon className="w-5 h-5 mr-2" />
+              Clear All History
+            </button>
+          )}
+        </div>
 
-        <div className="flex-grow overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-thumb-brand-mediumGray dark:scrollbar-thumb-gray-700 scrollbar-track-transparent">
+        {/* History Scrollable List */}
+        <div className="flex-grow overflow-y-auto px-4 space-y-2 pr-2 scrollbar-thin scrollbar-thumb-brand-mediumGray dark:scrollbar-thumb-gray-700 scrollbar-track-transparent">
           {sortedHistoryItems.length === 0 && (
             <p className="text-brand-black/70 dark:text-gray-400 text-sm italic">No history yet. Start a new session!</p>
           )}
@@ -157,7 +162,9 @@ const HistorySidebar: React.FC<HistorySidebarProps> = memo(({
             </div>
           ))}
         </div>
-        <footer className="hidden md:block text-center text-xs text-brand-black/60 dark:text-gray-400 mt-auto pt-4"> 
+
+        {/* Flush Footer */}
+        <footer className="hidden md:block text-center text-xs text-brand-black/60 dark:text-gray-400 py-3 px-4 border-t border-brand-mediumGray dark:border-gray-700 bg-brand-lightGray dark:bg-brand-black flex-shrink-0"> 
             Adaptiva by @belajarcarabelajar &copy; {new Date().getFullYear()}.
         </footer>
       </div>

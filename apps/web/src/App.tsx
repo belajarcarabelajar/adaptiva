@@ -3110,7 +3110,7 @@ const App: React.FC = () => {
 
 
   return (
-    <div className="min-h-screen bg-brand-white text-brand-black dark:bg-brand-black dark:text-gray-100 flex flex-col md:flex-row transition-colors duration-300 overflow-x-hidden">
+    <div className="min-h-screen md:h-screen md:w-screen md:overflow-hidden bg-brand-white text-brand-black dark:bg-brand-black dark:text-gray-100 flex flex-col md:flex-row transition-colors duration-300">
         <HistorySidebar 
             historyItems={historyItems}
             selectedHistoryItemId={selectedHistoryItemId}
@@ -3126,7 +3126,7 @@ const App: React.FC = () => {
             onDeleteItem={handleDeleteHistoryItem}
         />
         
-        <main className="flex-grow transition-all duration-300 ease-in-out">
+        <main className="flex-grow md:h-full md:overflow-y-auto transition-all duration-300 ease-in-out">
             <header className="md:hidden sticky top-0 z-30 bg-brand-white dark:bg-brand-black shadow-sm p-3 flex justify-between items-center border-b border-brand-mediumGray dark:border-gray-700">
                 <button
                     onClick={toggleSidebarVisibility}
