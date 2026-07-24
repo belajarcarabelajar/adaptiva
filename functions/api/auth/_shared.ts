@@ -351,10 +351,12 @@ export function jsonResponse(body: unknown, status = 200, extraHeaders: Record<s
 }
 
 export function redirectResponse(location: string, status = 302, extraHeaders: Record<string, string> = {}): Response {
-  return new Response(null, {
-    status,
-    headers: { Location: location, ...extraHeaders },
-  });
+  const headers = new Headers();
+  headers.set("Location", location);
+  for (const [k, v] of Object.entries(extraHeaders)) {
+    headers.append(k, v);
+  }
+  return new Response(null, { status, headers });
 }
 
 export { PagesContext, PagesFunction };
