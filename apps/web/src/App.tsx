@@ -492,6 +492,10 @@ const App: React.FC = () => {
         setTimeout(() => alert(`Congratulations! You've completed the learning journey for "${currentItem.topic}" and reached Level ${finalUserLevel}!`), 100);
       }
       
+      if (currentItem.overallProgress === newOverallProgress && (currentItem.journeyCompleted || false) === (updatedItem.journeyCompleted || false)) {
+        return prevItems;
+      }
+      
       const newHistory = [...prevItems];
       newHistory[itemIndex] = updatedItem;
       return newHistory;

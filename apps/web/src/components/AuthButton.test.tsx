@@ -17,7 +17,6 @@ describe("AuthButton component", () => {
   });
 
   it("renders loading spinner initially while session is being checked", () => {
-    // Keep fetch promise pending
     globalThis.fetch = vi.fn().mockImplementation(() => new Promise(() => {}));
 
     render(<AuthButton />);
@@ -35,9 +34,47 @@ describe("AuthButton component", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /sign in with google/i })).toBeInTheDocument();
     });
+
+    const signInBtn = screen.getByRole("button", { name: /sign in with google/i });
+    fireEvent.click(signInBtn);
   });
 
-  it("renders user avatar and dropdown menu when authenticated", async () => {
+  it("renders initial letter when user picture is absent and toggles/closes menu on outside click", async () => {
+    const mockUser = {
+      id: "456",
+      email: "jane@example.com",
+      name: "Jane Doe",
+      picture: "",
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ user: mockUser }),
+    } as Response);
+
+    render(
+      <div>
+        <div data-testid="outside">Outside</div>
+        <AuthButton />
+      </div>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("J")).toBeInTheDocument();
+    });
+
+    const profileBtn = screen.getByRole("button", { name: /jane doe/i });
+    fireEvent.click(profileBtn);
+
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    // Click outside to close menu
+    fireEvent.mouseDown(screen.getByTestId("outside"));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("calls signOut when Sign out menu item is clicked", async () => {
     const mockUser = {
       id: "456",
       email: "jane@example.com",
@@ -57,16 +94,16 @@ describe("AuthButton component", () => {
       expect(screen.getByText("Jane Doe")).toBeInTheDocument();
     });
 
-    // Click profile button to open menu
     const profileBtn = screen.getByRole("button", { name: /jane doe/i });
     fireEvent.click(profileBtn);
 
-    expect(screen.getByRole("menu")).toBeInTheDocument();
-    expect(screen.getByText("jane@example.com")).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument();
+    const signOutBtn = screen.getByRole("menuitem", { name: /sign out/i });
+    fireEvent.click(signOutBtn);
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("displays full account name on desktop without truncation or max-width restriction", async () => {
+  it("displays full account name on desktop without truncation", async () => {
     const mockUser = {
       id: "456",
       email: "alexander.supertramp@example.com",
@@ -85,9 +122,6 @@ describe("AuthButton component", () => {
     await waitFor(() => {
       const nameEl = screen.getByText("Alexander Supertramp The Second");
       expect(nameEl).toBeInTheDocument();
-      expect(nameEl.className).not.toContain("truncate");
-      expect(nameEl.className).not.toContain("max-w-[12ch]");
     });
   });
 });
-

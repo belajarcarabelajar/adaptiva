@@ -19,6 +19,8 @@ bun.lockb  # legacy binary lockfile; we use bun.lock (text JSON)
 # Per-app build outputs (monorepo)
 apps/*/dist
 apps/*/build
+coverage
+apps/*/coverage
 
 # Env files
 .env

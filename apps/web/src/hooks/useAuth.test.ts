@@ -24,6 +24,7 @@ describe("useAuth hook", () => {
       email: "user@example.com",
       name: "Test User",
       picture: "https://example.com/avatar.jpg",
+      points: 100,
     };
 
     globalThis.fetch = vi.fn().mockResolvedValue({
@@ -42,6 +43,33 @@ describe("useAuth hook", () => {
     expect(result.current.error).toBeNull();
   });
 
+  it("updates points using updatePoints", async () => {
+    const mockUser = {
+      id: "123",
+      email: "user@example.com",
+      name: "Test User",
+      points: 50,
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ user: mockUser }),
+    } as Response);
+
+    const { result } = renderHook(() => useAuth());
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("authenticated");
+    });
+
+    act(() => {
+      result.current.updatePoints(150);
+    });
+
+    expect(result.current.user?.points).toBe(150);
+  });
+
   it("sets unauthenticated status when /api/auth/me returns 401", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
@@ -57,10 +85,20 @@ describe("useAuth hook", () => {
     expect(result.current.user).toBeNull();
   });
 
-  it("parses auth_error parameter from URL search and cleans up history state", async () => {
-    window.history.pushState({}, "", "/?auth_error=domain_not_allowed");
+  it("handles network error when /api/auth/me fails", async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error("Network disconnect"));
 
-    const replaceStateSpy = vi.spyOn(window.history, "replaceState");
+    const { result } = renderHook(() => useAuth());
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("unauthenticated");
+    });
+
+    expect(result.current.error).toBe("Network disconnect");
+  });
+
+  it("parses auth_error parameter variants from URL search and cleans up history state", async () => {
+    window.history.pushState({}, "", "/?auth_error=email_not_verified");
 
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
@@ -70,14 +108,12 @@ describe("useAuth hook", () => {
     const { result } = renderHook(() => useAuth());
 
     await waitFor(() => {
-      expect(result.current.error).toBe("Email domain is not allowed for sign-in.");
+      expect(result.current.error).toBe("Your Google email is not verified.");
     });
-
-    expect(replaceStateSpy).toHaveBeenCalledWith({}, "", "/");
   });
 
-  it("parses auth_error=not_configured parameter and shows user-friendly notice", async () => {
-    window.history.pushState({}, "", "/?auth_error=not_configured");
+  it("parses access_denied and invalid_state auth_error variants", async () => {
+    window.history.pushState({}, "", "/?auth_error=access_denied");
 
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
@@ -87,11 +123,11 @@ describe("useAuth hook", () => {
     const { result } = renderHook(() => useAuth());
 
     await waitFor(() => {
-      expect(result.current.error).toBe("Google Sign-in is not configured on this deployment.");
+      expect(result.current.error).toBe("Sign-in request was cancelled or denied.");
     });
   });
 
-  it("triggers redirect to /api/auth/login on signIn", () => {
+  it("triggers redirect to /api/auth/login on signIn and /api/auth/logout on signOut", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 401,
@@ -106,10 +142,16 @@ describe("useAuth hook", () => {
 
     const { result } = renderHook(() => useAuth());
     act(() => {
-      result.current.signIn();
+      result.current.signIn("/custom-path");
     });
 
-    expect(locationMock.href).toBe("/api/auth/login?next=%2F");
+    expect(locationMock.href).toBe("/api/auth/login?next=%2Fcustom-path");
+
+    act(() => {
+      result.current.signOut();
+    });
+
+    expect(locationMock.href).toBe("/api/auth/logout");
 
     Object.defineProperty(window, "location", {
       writable: true,

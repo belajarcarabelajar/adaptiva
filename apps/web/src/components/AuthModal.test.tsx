@@ -48,4 +48,11 @@ describe("AuthModal component", () => {
     fireEvent.click(cancelBtn);
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
+
+  it("calls onClose when Escape key is pressed while modal is open", () => {
+    const mockOnClose = vi.fn();
+    render(<AuthModal isOpen={true} onClose={mockOnClose} />);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(mockOnClose).toHaveBeenCalledTimes(1);
+  });
 });
