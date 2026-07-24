@@ -173,4 +173,4 @@ bun run test
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is proprietary software. All rights reserved. See the [LICENSE](LICENSE) file for complete details.
