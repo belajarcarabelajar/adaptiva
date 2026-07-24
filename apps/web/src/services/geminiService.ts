@@ -52,6 +52,10 @@ const callWithRetries = async <T,>(apiCallFn: () => Promise<T>, callName: string
     try {
       return await apiCallFn();
     } catch (error) {
+      const errStr = String(error);
+      if (errStr.includes("401") || errStr.toLowerCase().includes("unauthorized")) {
+        throw new Error("unauthorized: Sign in required to use AI features.");
+      }
       attempts++;
       console.warn(`API call "${callName}" failed on attempt ${attempts}. Error:`, error);
       if (attempts >= MAX_RETRIES) {

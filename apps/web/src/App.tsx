@@ -29,6 +29,8 @@ import ExamConfigView from './components/ExamConfigView';
 import ExamTakingView from './components/ExamTakingView';
 import ExamResultsView from './components/ExamResultsView';
 import AuthButton from './components/AuthButton';
+import AuthModal from './components/AuthModal';
+import { useAuth } from './hooks/useAuth';
 
 
 type ViewMode = 'input' | 'loading' | 'results' | 'error';
@@ -36,6 +38,8 @@ type ExamViewMode = 'config' | 'taking' | 'results' | 'history_summary' | 'modul
 
 
 const App: React.FC = () => {
+  const { user, status } = useAuth();
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<ViewMode>('input');
   const [activeTab, setActiveTab] = useState<ActiveTab>('curriculum');
   const [curriculumSubTab, setCurriculumSubTab] = useState<CurriculumSubTab>('syllabus');
@@ -433,6 +437,10 @@ const App: React.FC = () => {
 
 
   const handleFormSubmit = useCallback(async (submittedTopic: string, submittedTargetLanguage: string) => {
+    if (status !== 'authenticated' || !user) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setViewMode('loading');
     setLoadingStepMessage("Analyzing topic and crafting curriculum outline...");
     setError(null);
@@ -538,14 +546,21 @@ const App: React.FC = () => {
 
     } catch (err) {
       console.error("Error during initial learning journey setup:", err);
+      if ((err as Error)?.message?.includes("unauthorized")) {
+        setIsAuthModalOpen(true);
+      }
       setError((err as Error).message || "An unknown error occurred while fetching learning materials.");
       setViewMode('error');
     } finally {
         setLoadingStepMessage(null);
     }
-  }, [resetQuizState, resetExamState, resetFlashcardState, resetResourcesState, setIsSidebarVisible]); 
+  }, [status, user, resetQuizState, resetExamState, resetFlashcardState, resetResourcesState, setIsSidebarVisible]); 
   
   const handleLoadModuleDetails = useCallback(async (moduleIndex: number): Promise<string | null> => {
+    if (status !== 'authenticated' || !user) {
+      setIsAuthModalOpen(true);
+      return null;
+    }
     if (!curriculum || !curriculum.modules[moduleIndex] || !selectedHistoryItemId) return null;
 
     const moduleToLoad = curriculum.modules[moduleIndex];
@@ -732,6 +747,10 @@ const App: React.FC = () => {
 
 
   const handleGenerateQuiz = useCallback(async (module: CurriculumModule) => {
+    if (status !== 'authenticated' || !user) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     if (!module.moduleMaterial) {
       setError("Please load the module material first before generating a quiz.");
       setCurriculumSubTab('material'); 
@@ -1319,6 +1338,10 @@ const App: React.FC = () => {
 
 
   const handleGenerateAndStartExam = useCallback(async (config: ExamConfiguration) => {
+    if (status !== 'authenticated' || !user) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     if (!activeExamModuleInfo || !activeExamModuleInfo.moduleMaterial) {
         setError("Cannot generate exam: Active module information is missing.");
         setCurriculumSubTab('material'); 
@@ -1480,6 +1503,10 @@ const App: React.FC = () => {
 
 
   const handleGenerateFlashcards = useCallback(async () => {
+    if (status !== 'authenticated' || !user) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     if (!activeFlashcardModuleInfo || !activeFlashcardModuleInfo.moduleMaterial || !selectedHistoryItemId) {
         setError("Cannot generate flashcards: Active module information or learning session is missing.");
         return;
@@ -3078,6 +3105,10 @@ const App: React.FC = () => {
                 </div>
                  {renderMainContent()}
             </div>
+            <AuthModal
+              isOpen={isAuthModalOpen}
+              onClose={() => setIsAuthModalOpen(false)}
+            />
         </main>
     </div>
   );

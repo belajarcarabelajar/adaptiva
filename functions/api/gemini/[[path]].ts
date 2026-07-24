@@ -38,6 +38,8 @@ interface Env {
 
 const UPSTREAM_BASE_DEFAULT = "https://generativelanguage.googleapis.com";
 
+import { getSession, type Env as AuthEnv } from "../auth/_shared";
+
 // Strip the /api/gemini prefix that triggered this Function.
 // `params.path` is the array of path segments AFTER the [[path]] wildcard.
 function buildUpstreamUrl(request: Request, params: PagesContext["params"]): string {
@@ -61,6 +63,15 @@ async function proxyRequest(request: Request, env: Env, params: PagesContext["pa
     return new Response(
       JSON.stringify({ error: "GEMINI_API_KEY is not configured on this Pages project." }),
       { status: 500, headers: { "content-type": "application/json" } }
+    );
+  }
+
+  // Require Google Sign-in session to access AI generation features
+  const session = await getSession(request, env as unknown as AuthEnv);
+  if (!session) {
+    return new Response(
+      JSON.stringify({ error: "unauthorized", message: "Sign in with Google required to use AI features." }),
+      { status: 401, headers: { "content-type": "application/json" } }
     );
   }
 
