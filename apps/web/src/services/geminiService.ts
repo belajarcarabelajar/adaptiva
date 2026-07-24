@@ -25,16 +25,20 @@ const ai = new GoogleGenAI({
   httpOptions: { baseUrl: proxyBaseUrl }
 });
 
-// Model Constants updated to latest recommended models.
-const MODEL_CURRICULUM_OUTLINE = 'gemini-2.5-flash';
-const MODEL_MODULE_SUMMARY = 'gemini-2.5-pro';
-const MODEL_SEVEN_DAY_PLAN = 'gemini-2.5-flash';
-const MODEL_QUIZ_GENERATION = 'gemini-2.5-flash';
-const MODEL_QUIZ_EXPLANATION = 'gemini-2.5-flash';
-const MODEL_EXAM_QUESTIONS = 'gemini-2.5-pro';
-const MODEL_FLASHCARDS = 'gemini-2.5-pro';
-const MODEL_RESOURCES = 'gemini-2.5-flash';
-const MODEL_CHAT = 'gemini-2.5-flash';
+// Model Constants — all routes go through gemini-3.5-flash.
+// Pro tier is intentionally not used: the current API key has zero quota
+// for gemini-2.5-pro and gemini-3.1-pro-preview (HTTP 429 limit: 0).
+// Once billing / a Pro-enabled key is available, the pro entries below
+// can be split out again.
+const MODEL_CURRICULUM_OUTLINE = 'gemini-3.5-flash';
+const MODEL_MODULE_SUMMARY = 'gemini-3.5-flash';
+const MODEL_SEVEN_DAY_PLAN = 'gemini-3.5-flash';
+const MODEL_QUIZ_GENERATION = 'gemini-3.5-flash';
+const MODEL_QUIZ_EXPLANATION = 'gemini-3.5-flash';
+const MODEL_EXAM_QUESTIONS = 'gemini-3.5-flash';
+const MODEL_FLASHCARDS = 'gemini-3.5-flash';
+const MODEL_RESOURCES = 'gemini-3.5-flash';
+const MODEL_CHAT = 'gemini-3.5-flash';
 
 
 const MAX_RETRIES = 3;

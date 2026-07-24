@@ -28,6 +28,7 @@ import MemoizedTopicInputForm from './components/TopicInputForm';
 import ExamConfigView from './components/ExamConfigView';
 import ExamTakingView from './components/ExamTakingView';
 import ExamResultsView from './components/ExamResultsView';
+import AuthButton from './components/AuthButton';
 
 
 type ViewMode = 'input' | 'loading' | 'results' | 'error';
@@ -3038,8 +3039,8 @@ const App: React.FC = () => {
         
         <main className="flex-grow transition-all duration-300 ease-in-out">
             <header className="md:hidden sticky top-0 z-30 bg-brand-white dark:bg-brand-black shadow-sm p-3 flex justify-between items-center border-b border-brand-mediumGray dark:border-gray-700">
-                <button 
-                    onClick={toggleSidebarVisibility} 
+                <button
+                    onClick={toggleSidebarVisibility}
                     className="p-2 rounded-md text-brand-blue dark:text-blue-300 hover:bg-brand-lightGray dark:hover:bg-gray-700"
                     aria-label={isSidebarVisible ? "Close sidebar" : "Open sidebar"}
                     aria-expanded={isSidebarVisible}
@@ -3049,13 +3050,16 @@ const App: React.FC = () => {
                 <h1 className="text-lg font-semibold text-brand-blue dark:text-blue-300 truncate">
                     {topic || "Adaptiva Study"}
                 </h1>
-                <button
-                    onClick={toggleDarkMode}
-                    className="p-2 rounded-md text-brand-blue dark:text-blue-300 hover:bg-brand-lightGray dark:hover:bg-gray-700"
-                    aria-label={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-                >
-                    {darkMode ? <Icons.SunIcon className="w-5 h-5" /> : <Icons.MoonIcon className="w-5 h-5" />}
-                </button>
+                <div className="flex items-center gap-1">
+                    <button
+                        onClick={toggleDarkMode}
+                        className="p-2 rounded-md text-brand-blue dark:text-blue-300 hover:bg-brand-lightGray dark:hover:bg-gray-700"
+                        aria-label={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                    >
+                        {darkMode ? <Icons.SunIcon className="w-5 h-5" /> : <Icons.MoonIcon className="w-5 h-5" />}
+                    </button>
+                    <AuthButton />
+                </div>
             </header>
             {!isSidebarVisible && (
                 <button
@@ -3069,6 +3073,9 @@ const App: React.FC = () => {
             )}
 
             <div className={`p-2 sm:p-3 md:p-4 lg:p-6 ${isSidebarVisible && typeof window !== 'undefined' && window.innerWidth >= 768 ? 'md:ml-0' : 'md:ml-0'}`}>
+                <div className="hidden md:flex justify-end mb-3">
+                    <AuthButton />
+                </div>
                  {renderMainContent()}
             </div>
         </main>

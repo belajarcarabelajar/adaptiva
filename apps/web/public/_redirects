@@ -1,0 +1,4 @@
+# SPA fallback. Order matters: keep the API rule above the catch-all so
+# /api/gemini/* requests are routed to the Pages Function, not to index.html.
+/api/gemini/*  /api/gemini/:splat  200
+/*             /index.html         200

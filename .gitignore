@@ -20,7 +20,10 @@ bun.lockb  # legacy binary lockfile; we use bun.lock (text JSON)
 apps/*/dist
 apps/*/build
 
-# Per-app env files (monorepo)
+# Env files
+.env
+.env.*
+.env.local
 apps/*/.env
 apps/*/.env.local
 
@@ -34,3 +37,8 @@ apps/*/.env.local
 *.njsproj
 *.sln
 *.sw?
+
+# Wrangler local dev secrets and cache
+.wrangler/
+.dev.vars
+.dev.vars.*

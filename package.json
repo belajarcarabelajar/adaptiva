@@ -13,6 +13,18 @@
     "build:api": "bun --filter '@adaptiva/api' build",
     "start": "bun --filter '@adaptiva/api' start",
     "test": "bun --filter '@adaptiva/web' test",
-    "test:web": "bun --filter '@adaptiva/web' test"
+    "test:web": "bun --filter '@adaptiva/web' test",
+    "deploy": "bun run build && wrangler pages deploy apps/web/dist --project-name adaptiva --commit-dirty=true",
+    "deploy:script": "bash scripts/deploy-website.sh",
+    "deploy:dry": "bun run build && wrangler pages deploy apps/web/dist --project-name adaptiva --dry-run",
+    "pages:secret:set": "wrangler pages secret put GEMINI_API_KEY --project-name adaptiva",
+    "pages:tail": "wrangler pages deployment tail --project-name adaptiva",
+    "check:cf": "bun run scripts/check-cf.ts",
+    "check:cf:json": "bun run scripts/check-cf.ts --json",
+    "setup:kv": "bun run scripts/setup-kv.ts",
+    "setup:kv:dry": "bun run scripts/setup-kv.ts --dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "^3.114.0"
   }
 }

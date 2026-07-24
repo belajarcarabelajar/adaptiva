@@ -109,7 +109,7 @@ export const applyInlineFormatting = (text: string): string => {
         return match; 
     }
 
-    return `<a href="${urlToUse}" class="text-brand-orange hover:text-brand-red dark:text-orange-400 dark:hover:text-red-500 underline">${cleanedLinkText}</a>`;
+    return `<a href="${urlToUse}" target="_blank" rel="noopener noreferrer" class="text-brand-orange hover:text-brand-red dark:text-orange-400 dark:hover:text-red-500 underline">${cleanedLinkText}</a>`;
   });
 
   // Autolink URLs (should run after specific Markdown link parsing)
@@ -131,7 +131,7 @@ export const applyInlineFormatting = (text: string): string => {
     if (MALICIOUS_PROTOCOL_REGEX.test(properUrl)) {
         return urlMatch; 
     }
-    return `<a href="${properUrl}" class="text-brand-orange hover:text-brand-red dark:text-orange-400 dark:hover:text-red-500 underline">${urlMatch}</a>`;
+    return `<a href="${properUrl}" target="_blank" rel="noopener noreferrer" class="text-brand-orange hover:text-brand-red dark:text-orange-400 dark:hover:text-red-500 underline">${urlMatch}</a>`;
   });
   
   // Bold: **text** or __text__
