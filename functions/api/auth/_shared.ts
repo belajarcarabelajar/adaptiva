@@ -67,6 +67,7 @@ export interface GoogleUserInfo {
 export const SESSION_COOKIE = "adaptiva_sess";
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 export const STATE_TTL_SECONDS = 600; // 10 min
+export const DEFAULT_INITIAL_POINTS = 100;
 
 // --- Crypto helpers ---
 
