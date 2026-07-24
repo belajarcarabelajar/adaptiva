@@ -158,7 +158,7 @@ const tryParseCandidate = <T,>(candidate: string): T | null => {
   }
 };
 
-const parseGeminiJsonResponse = <T,>(responseText: string): T | null => {
+const parseGeminiJsonResponse = <T,>(responseText?: string): T | null => {
   if (!responseText) return null;
   const originalTrimmedStr = responseText.trim();
 
@@ -901,7 +901,9 @@ export const sendMessageToTutorStream = async (
   try {
     const responseStream = await chat.sendMessageStream({ message });
     for await (const chunk of responseStream) {
-      onChunk(chunk.text);
+      if (chunk.text) {
+        onChunk(chunk.text);
+      }
     }
   } catch (error) {
     console.error("Error sending streaming message to tutor:", error);

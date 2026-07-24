@@ -1165,7 +1165,7 @@ const App: React.FC = () => {
     }
     
     moduleForRetake = currentLearningJourney.curriculum.modules[moduleIndex];
-    let material = moduleForRetake.moduleMaterial;
+    let material: string | null | undefined = moduleForRetake.moduleMaterial;
 
     if (!material) {
         material = await handleLoadModuleDetails(moduleIndex); 
@@ -1272,7 +1272,7 @@ const App: React.FC = () => {
   const handleInitiateExamConfig = useCallback(async (module: CurriculumModule, initialConfig?: Partial<ExamConfiguration>) => {
     setViewMode('loading');
     setError(null);
-    let material = module.moduleMaterial;
+    let material: string | null | undefined = module.moduleMaterial;
     let currentLearningJourney = currentLearningJourneyMemo;
 
 
@@ -1508,7 +1508,7 @@ const App: React.FC = () => {
   const handleInitiateFlashcardGeneration = useCallback(async (module: CurriculumModule) => {
     setViewMode('loading');
     setError(null);
-    let material = module.moduleMaterial;
+    let material: string | null | undefined = module.moduleMaterial;
     let currentLearningJourney = currentLearningJourneyMemo;
 
     if (!material && currentLearningJourney && curriculum) { 
