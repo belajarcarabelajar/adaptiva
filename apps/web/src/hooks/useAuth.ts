@@ -52,7 +52,7 @@ async function fetchMe(): Promise<AuthUser | null> {
           ? new URL("/api/auth/me", window.location.origin).toString()
           : "/api/auth/me";
       const r = await fetch(targetUrl, {
-        credentials: "same-origin",
+        credentials: "include",
         cache: "no-store",
       });
       if (r.status === 401) return null;

@@ -153,7 +153,11 @@ export function getOrigin(request: Request, env: Env): string {
 
 export function isHttps(request: Request, env: Env): boolean {
   if (env.AUTH_BASE_URL) return getOrigin(request, env).startsWith("https://");
-  return new URL(request.url).protocol === "https:";
+  const proto = request.headers.get("x-forwarded-proto") || request.headers.get("cf-visitor");
+  if (proto && proto.includes("https")) return true;
+  const url = new URL(request.url);
+  if (url.protocol === "https:") return true;
+  return !url.hostname.includes("localhost") && !url.hostname.includes("127.0.0.1");
 }
 
 // --- Session helpers ---
