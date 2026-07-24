@@ -39,6 +39,21 @@ type ViewMode = 'input' | 'loading' | 'results' | 'error';
 type ExamViewMode = 'config' | 'taking' | 'results' | 'history_summary' | 'module_selection';
 
 
+// Map internal error-code prefixes from the proxy to user-friendly Indonesian messages.
+// The proxy already refunded points before sending these; we just surface the message.
+const formatAiError = (err: unknown): string => {
+  const msg = err instanceof Error ? err.message : String(err);
+  const REFUNDED_CODES = ['ai_generation_failed', 'ai_generation_blocked', 'ai_upstream_network_error'];
+  for (const code of REFUNDED_CODES) {
+    if (msg.startsWith(code + ':')) {
+      return msg.slice(code.length + 1).trim();
+    }
+  }
+  if (msg.includes('unauthorized')) return 'Silakan masuk terlebih dahulu untuk menggunakan fitur AI.';
+  if (msg.includes('insufficient_points')) return 'Poin Anda tidak cukup untuk melakukan aksi ini.';
+  return msg || 'Terjadi kesalahan tidak diketahui.';
+};
+
 const App: React.FC = () => {
   const { user, status, refresh } = useAuth();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
@@ -496,11 +511,15 @@ const App: React.FC = () => {
       newChat = startChatSession(submittedTopic, submittedTargetLanguage);
 
       setLoadingStepMessage("Fetching learning resources...");
-      fetchedResources = await fetchLearningResources(submittedTopic, submittedTargetLanguage);
-      // Even if resources fail, we proceed with what we have. Error will be shown if specific to resources.
-      if (!fetchedResources) {
-        console.warn("Failed to fetch learning resources during initial setup, but continuing.");
-        setFetchResourcesError("Could not fetch all learning resources initially. You can try again from the Resources tab.");
+      try {
+        fetchedResources = await fetchLearningResources(submittedTopic, submittedTargetLanguage);
+        if (!fetchedResources) {
+          setFetchResourcesError("Sumber belajar tidak ditemukan untuk topik ini.");
+        }
+      } catch (resErr) {
+        console.warn("Failed to fetch learning resources during initial setup, but continuing:", resErr);
+        setFetchResourcesError(formatAiError(resErr));
+        fetchedResources = null;
       }
       
       // Update state after all essential parts are fetched or attempted
@@ -559,14 +578,15 @@ const App: React.FC = () => {
 
     } catch (err) {
       console.error("Error during initial learning journey setup:", err);
-      if ((err as Error)?.message?.includes("unauthorized")) {
+      const errMsg = formatAiError(err);
+      if (errMsg.includes("unauthorized") || (err instanceof Error && err.message.includes("unauthorized"))) {
         setIsAuthModalOpen(true);
       }
-      setError((err as Error).message || "An unknown error occurred while fetching learning materials.");
+      setError(errMsg);
       setViewMode('error');
     } finally {
         setLoadingStepMessage(null);
-        void refresh();
+        void refresh(); // Always re-sync points (including refunds) after any AI operation
     }
   }, [status, user, refresh, resetQuizState, resetExamState, resetFlashcardState, resetResourcesState, setIsSidebarVisible]); 
   
@@ -639,7 +659,7 @@ const App: React.FC = () => {
       }
     } catch (err) {
       console.error(err);
-      const errorMessage = (err as Error).message || `Error loading details for ${moduleToLoad.title}.`;
+      const errorMessage = formatAiError(err) || `Error loading details for ${moduleToLoad.title}.`;
       setCurriculum(prev => {
         if (!prev) return null;
         const updatedModules = [...prev.modules];
@@ -667,7 +687,7 @@ const App: React.FC = () => {
       });
       return null;
     } finally {
-      void refresh();
+      void refresh(); // Re-sync points (including refunds) after module load
     }
   }, [status, user, refresh, curriculum, targetLanguage, selectedHistoryItemId]);
 
@@ -812,11 +832,12 @@ const App: React.FC = () => {
       }
     } catch (err) {
       console.error("Error in handleGenerateQuiz:", err);
-      setError((err as Error).message || "An unexpected error occurred while generating the quiz.");
+      setError(formatAiError(err));
       setViewMode('results'); 
-      setCurriculumSubTab('quiz'); 
+      setCurriculumSubTab('quiz');
+      void refresh(); // Re-sync points (including refunds) after quiz generation
     }
-  }, [targetLanguage, resetQuizState, curriculum]); 
+  }, [targetLanguage, resetQuizState, curriculum, refresh]); 
 
   const handleQuizAnswer = (questionId: string, answer: string) => {
     if (!quiz || quizAttemptCompleted || reviewingQuiz || (quiz[currentQuizQuestionIndex] && quiz[currentQuizQuestionIndex].feedbackShown)) return;
@@ -1434,13 +1455,14 @@ const App: React.FC = () => {
         setViewMode('results'); 
     } catch (err) {
         console.error("Error generating exam:", err);
-        setError((err as Error).message || "An unknown error occurred while generating the exam.");
+        setError(formatAiError(err));
         setExamViewMode('config'); 
         setViewMode('results');
     } finally {
         setIsGeneratingExam(false);
+        void refresh(); // Re-sync points (including refunds) after exam generation
     }
-  }, [activeExamModuleInfo, targetLanguage, handleSubmitExam]); 
+  }, [activeExamModuleInfo, targetLanguage, handleSubmitExam, refresh]); 
 
   const handleExamAnswer = (questionId: string, answer: string) => {
     if (!currentExamQuestions || examAttemptCompleted || reviewingExam) return;
@@ -1593,11 +1615,12 @@ const App: React.FC = () => {
         }
     } catch (err) {
         console.error("Error generating flashcards:", err);
-        setError((err as Error).message || "An unknown error occurred while generating flashcards.");
+        setError(formatAiError(err));
     } finally {
         setIsGeneratingFlashcards(false);
+        void refresh(); // Re-sync points (including refunds) after flashcard generation
     }
-  }, [activeFlashcardModuleInfo, targetLanguage, selectedHistoryItemId]);
+  }, [activeFlashcardModuleInfo, targetLanguage, selectedHistoryItemId, refresh]);
 
   const handleOpenAddFlashcardModal = (cardToEdit?: Flashcard) => {
     if (cardToEdit) {
@@ -1779,6 +1802,15 @@ const App: React.FC = () => {
 
   const sortedStackCards = useMemo(() => getSortedFlashcardsForStack(), [getSortedFlashcardsForStack]);
 
+  const quizToShowInResultOrReview = useMemo(() => {
+    const quizModuleTitleForDisplay = currentQuizModuleInfo?.title || reviewingQuiz?.moduleTitle;
+    return reviewingQuiz || (quizAttemptCompleted && quiz ? {
+        quiz: quiz,
+        score: quiz.reduce((acc, q) => acc + (q.isCorrect ? 1 : 0), 0),
+        moduleTitle: quizModuleTitleForDisplay || ""
+    } as StoredQuizAttempt : null);
+  }, [reviewingQuiz, quizAttemptCompleted, quiz, currentQuizModuleInfo?.title]);
+
 
   const shuffleArray = <T,>(array: T[]): T[] => {
     const newArray = [...array];
@@ -1901,15 +1933,16 @@ const App: React.FC = () => {
           return newItems;
         });
       } else {
-        setFetchResourcesError("Failed to fetch learning resources. The AI might not have found relevant information or an issue occurred.");
+        setFetchResourcesError("Tidak dapat menemukan sumber belajar untuk topik ini.");
       }
     } catch (err) {
       console.error("Error fetching resources:", err);
-      setFetchResourcesError((err as Error).message || "An unknown error occurred while fetching resources.");
+      setFetchResourcesError(formatAiError(err));
     } finally {
       setIsFetchingResources(false);
+      void refresh(); // Re-sync points (including refunds) after resources fetch
     }
-  }, [selectedHistoryItemId, topic, targetLanguage]);
+  }, [selectedHistoryItemId, topic, targetLanguage, refresh]);
 
   useEffect(() => {
     // This effect now primarily loads resources from history if available,
@@ -2063,13 +2096,6 @@ const App: React.FC = () => {
         const quizModuleTitleForDisplay = currentQuizModuleInfo?.title || reviewingQuiz?.moduleTitle;
         const currentActiveQuizQuestionData = activeQuizForDisplay ? activeQuizForDisplay[currentQuizQuestionIndex] : null;
         
-        const quizToShowInResultOrReview = useMemo(() => {
-            return reviewingQuiz || (quizAttemptCompleted && activeQuizForDisplay ? {
-                quiz: activeQuizForDisplay,
-                score: activeQuizForDisplay.reduce((acc, q) => acc + (q.isCorrect ? 1 : 0), 0),
-                moduleTitle: quizModuleTitleForDisplay || ""
-            } as StoredQuizAttempt : null);
-        }, [reviewingQuiz, quizAttemptCompleted, activeQuizForDisplay, quizModuleTitleForDisplay]);
         const currentQuizQuestionForReviewView = quizToShowInResultOrReview ? quizToShowInResultOrReview.quiz[currentQuizQuestionIndex] : null;
         
         const examToShowInResultView = reviewingExam || (examAttemptCompleted ? currentExamAttempt : null);

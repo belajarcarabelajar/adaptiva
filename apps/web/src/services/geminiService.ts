@@ -60,12 +60,34 @@ const callWithRetries = async <T,>(apiCallFn: () => Promise<T>, callName: string
       return await apiCallFn();
     } catch (error) {
       const errStr = String(error);
+
+      // Auth errors — do not retry
       if (errStr.includes("401") || errStr.toLowerCase().includes("unauthorized")) {
         throw new Error("unauthorized: Sign in required to use AI features.");
       }
+
+      // Insufficient points — do not retry
       if (errStr.includes("429") || errStr.includes("insufficient_points")) {
         throw new Error("insufficient_points: Poin Anda tidak cukup untuk melakukan aksi ini.");
       }
+
+      // AI generation failed (HTTP 4xx/5xx from upstream) — proxy already refunded points
+      if (errStr.includes("ai_generation_failed")) {
+        const msgMatch = errStr.match(/ai_generation_failed[:\s]+(.+)/i);
+        throw new Error(`ai_generation_failed: ${msgMatch?.[1] ?? "Layanan AI mengalami kendala. Poin Anda telah dikembalikan."}`);
+      }
+
+      // AI content blocked by safety filter — proxy already refunded points
+      if (errStr.includes("ai_generation_blocked")) {
+        const msgMatch = errStr.match(/ai_generation_blocked[:\s]+(.+)/i);
+        throw new Error(`ai_generation_blocked: ${msgMatch?.[1] ?? "Konten tidak dapat dibuat oleh AI. Poin Anda telah dikembalikan."}`);
+      }
+
+      // Network error reaching AI upstream — proxy already refunded points
+      if (errStr.includes("ai_upstream_network_error")) {
+        throw new Error("ai_upstream_network_error: Gagal terhubung ke layanan AI. Poin Anda telah dikembalikan.");
+      }
+
       attempts++;
       console.warn(`API call "${callName}" failed on attempt ${attempts}. Error:`, error);
       if (attempts >= MAX_RETRIES) {
@@ -82,94 +104,110 @@ const callWithRetries = async <T,>(apiCallFn: () => Promise<T>, callName: string
   throw new Error(`API call "${callName}" failed definitively after ${MAX_RETRIES} attempts.`);
 };
 
+const sanitizeJsonString = (str: string): string => {
+  // 1. Remove trailing commas before closing object/array delimiters
+  const clean = str.replace(/,\s*([}\]])/g, "$1");
+
+  // 2. Escape literal control characters inside double-quoted JSON string values
+  let result = "";
+  let inString = false;
+  let isEscaped = false;
+
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean[i];
+    if (inString) {
+      if (isEscaped) {
+        result += ch;
+        isEscaped = false;
+      } else if (ch === "\\") {
+        result += ch;
+        isEscaped = true;
+      } else if (ch === '"') {
+        result += ch;
+        inString = false;
+      } else if (ch === "\n") {
+        result += "\\n";
+      } else if (ch === "\r") {
+        result += "\\r";
+      } else if (ch === "\t") {
+        result += "\\t";
+      } else if (ch.charCodeAt(0) < 32) {
+        result += "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0");
+      } else {
+        result += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inString = true;
+      }
+      result += ch;
+    }
+  }
+  return result;
+};
+
+const tryParseCandidate = <T,>(candidate: string): T | null => {
+  try {
+    return JSON.parse(candidate) as T;
+  } catch {
+    try {
+      return JSON.parse(sanitizeJsonString(candidate)) as T;
+    } catch {
+      return null;
+    }
+  }
+};
 
 const parseGeminiJsonResponse = <T,>(responseText: string): T | null => {
-  let originalTrimmedStr = responseText.trim();
-  let currentStrToParse = originalTrimmedStr;
+  if (!responseText) return null;
+  const originalTrimmedStr = responseText.trim();
 
-  try {
-    return JSON.parse(currentStrToParse) as T;
-  } catch (e: unknown) {
-    console.warn(
-      `Initial JSON.parse failed. Error: "${e instanceof Error && e.message ? e.message : 'Unknown JSON parse error'}". Attempting fallbacks. Original text prefix (first 200 chars):`,
-      currentStrToParse.substring(0, 200) + (currentStrToParse.length > 200 ? "..." : "")
-    );
-  }
+  // Attempt 1: Direct or sanitized parse on full text
+  let parsed = tryParseCandidate<T>(originalTrimmedStr);
+  if (parsed) return parsed;
 
-  const fenceRegex = /^```(?:json)?\s*\n?(.*?)\n?\s*```$/s;
-  const match = currentStrToParse.match(fenceRegex);
+  // Attempt 2: Extract content from markdown fences (```json ... ``` or ``` ... ```)
+  const fenceRegex = /```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/;
+  const match = originalTrimmedStr.match(fenceRegex);
   if (match && match[1]) {
-    const fencedContent = match[1].trim();
-    try {
-      console.log("Attempting JSON.parse after markdown fence removal.");
-      currentStrToParse = fencedContent; 
-      return JSON.parse(currentStrToParse) as T;
-    } catch (e: unknown) {
-      console.warn(
-        `JSON.parse after markdown fence removal failed. Error: "${e instanceof Error && e.message ? e.message : 'Unknown JSON parse error'}". Text prefix (first 200 chars):`,
-        currentStrToParse.substring(0, 200) + (currentStrToParse.length > 200 ? "..." : "")
-      );
-    }
+    parsed = tryParseCandidate<T>(match[1].trim());
+    if (parsed) return parsed;
   }
-  
+
+  // Attempt 3: Spreadsheet prefix removal
   const SPREADSHEET_JSON_PREFIX = "Default SpreadSheet Code:\n```json\n";
-  if (currentStrToParse.startsWith(SPREADSHEET_JSON_PREFIX)) {
-    let spreadsheetCleanedStr = currentStrToParse.substring(SPREADSHEET_JSON_PREFIX.length);
-    if (spreadsheetCleanedStr.endsWith("```")) { 
-        spreadsheetCleanedStr = spreadsheetCleanedStr.substring(0, spreadsheetCleanedStr.length - 3);
+  if (originalTrimmedStr.startsWith(SPREADSHEET_JSON_PREFIX)) {
+    let spreadsheetCleanedStr = originalTrimmedStr.substring(SPREADSHEET_JSON_PREFIX.length);
+    if (spreadsheetCleanedStr.endsWith("```")) {
+      spreadsheetCleanedStr = spreadsheetCleanedStr.substring(0, spreadsheetCleanedStr.length - 3);
     }
-    spreadsheetCleanedStr = spreadsheetCleanedStr.trim();
-    try {
-      console.log("Attempting JSON.parse after spreadsheet prefix removal.");
-      currentStrToParse = spreadsheetCleanedStr; 
-      return JSON.parse(currentStrToParse) as T;
-    } catch (e: unknown) {
-      console.warn(
-        `JSON.parse after spreadsheet prefix removal failed. Error: "${e instanceof Error && e.message ? e.message : 'Unknown JSON parse error'}". Text prefix (first 200 chars):`,
-        currentStrToParse.substring(0, 200) + (currentStrToParse.length > 200 ? "..." : "")
-      );
+    parsed = tryParseCandidate<T>(spreadsheetCleanedStr.trim());
+    if (parsed) return parsed;
+  }
+
+  // Attempt 4: Extract JSON object substring { ... }
+  if (originalTrimmedStr.includes('{') && originalTrimmedStr.includes('}')) {
+    const firstBrace = originalTrimmedStr.indexOf('{');
+    const lastBrace = originalTrimmedStr.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      const potentialObjectJson = originalTrimmedStr.substring(firstBrace, lastBrace + 1);
+      parsed = tryParseCandidate<T>(potentialObjectJson);
+      if (parsed) return parsed;
     }
   }
 
-  if (currentStrToParse.includes('{') && currentStrToParse.includes('}')) {
-    const firstBrace = currentStrToParse.indexOf('{');
-    const lastBrace = currentStrToParse.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      const potentialObjectJson = currentStrToParse.substring(firstBrace, lastBrace + 1);
-      if (potentialObjectJson !== currentStrToParse || potentialObjectJson !== originalTrimmedStr) {
-        try {
-          console.log("Attempting JSON.parse on extracted object substring.");
-          return JSON.parse(potentialObjectJson) as T;
-        } catch (e: unknown) {
-          console.warn(
-            `JSON.parse on extracted object substring failed. Error: "${e instanceof Error && e.message ? e.message : 'Unknown JSON parse error'}". Text prefix (first 200 chars):`,
-            potentialObjectJson.substring(0, 200) + (potentialObjectJson.length > 200 ? "..." : "")
-          );
-        }
-      }
-    }
-  }
-  
-  if (currentStrToParse.includes('[') && currentStrToParse.includes(']')) {
-    const firstBracket = currentStrToParse.indexOf('[');
-    const lastBracket = currentStrToParse.lastIndexOf(']');
-    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-      const potentialArrayJson = currentStrToParse.substring(firstBracket, lastBracket + 1);
-      if (potentialArrayJson !== currentStrToParse || potentialArrayJson !== originalTrimmedStr) {
-         try {
-          console.log("Attempting JSON.parse on extracted array substring.");
-          return JSON.parse(potentialArrayJson) as T;
-        } catch (e: unknown) {
-          console.warn(
-            `JSON.parse on extracted array substring failed. Error: "${e instanceof Error && e.message ? e.message : 'Unknown JSON parse error'}". Text prefix (first 200 chars):`,
-            potentialArrayJson.substring(0, 200) + (potentialArrayJson.length > 200 ? "..." : "")
-          );
-        }
-      }
+  // Attempt 5: Extract JSON array substring [ ... ]
+  if (originalTrimmedStr.includes('[') && originalTrimmedStr.includes(']')) {
+    const firstBracket = originalTrimmedStr.indexOf('[');
+    const lastBracket = originalTrimmedStr.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket > firstBracket) {
+      const potentialArrayJson = originalTrimmedStr.substring(firstBracket, lastBracket + 1);
+      parsed = tryParseCandidate<T>(potentialArrayJson);
+      if (parsed) return parsed;
     }
   }
 
-  console.error("All JSON parsing attempts failed for the response. Original text prefix:", originalTrimmedStr.substring(0,500) + "...");
+  console.error("All JSON parsing attempts failed for the response. Original text prefix:", originalTrimmedStr.substring(0, 500) + "...");
   return null;
 };
 
@@ -935,8 +973,25 @@ export const fetchLearningResources = async (
     }
     console.error("Failed to get content for learning resources from Gemini. Full response:", response);
     return null;
-  } catch (error) {
-    console.error(`Error fetching learning resources for topic "${topic}" (after retries):`, error);
-    throw error; 
+  } catch (firstError) {
+    console.warn(`Search-grounded fetchLearningResources for "${topic}" failed. Retrying without search tool...`, firstError);
+    // Fallback: Try generating resources without the googleSearch tool in case grounding service is failing
+    try {
+      const fallbackResponse = await callWithRetries<GenerateContentResponse>(
+        () => ai.models.generateContent({
+          model: MODEL_RESOURCES,
+          contents: prompt,
+        }),
+        `fetchLearningResources (fallback) for ${topic}`
+      );
+      const content = fallbackResponse.text;
+      if (content) {
+        return { content, sources: [] };
+      }
+      return null;
+    } catch (fallbackError) {
+      console.error(`Error fetching learning resources for topic "${topic}" (both primary & fallback failed):`, fallbackError);
+      throw fallbackError;
+    }
   }
 };

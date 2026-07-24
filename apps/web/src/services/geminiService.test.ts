@@ -45,6 +45,29 @@ describe('generateInitialCurriculumOutline', () => {
     });
   });
 
+  it('should parse JSON with literal unescaped newlines in syllabus text', async () => {
+    const mockResponse = {
+      text: "{\n  \"syllabus\": \"## Title\\n- Item 1\n- Item 2\",\n  \"moduleTitles\": [\"Modul 1\"]\n}"
+    };
+    mockGenerateContent.mockResolvedValue(mockResponse);
+
+    const result = await generateInitialCurriculumOutline('Digital Marketing');
+    expect(result).not.toBeNull();
+    expect(result?.syllabus).toContain('Item 1');
+    expect(result?.modules).toHaveLength(1);
+  });
+
+  it('should parse JSON wrapped in markdown fences with preamble text', async () => {
+    const mockResponse = {
+      text: "Here is the syllabus:\n```json\n{\n  \"syllabus\": \"## Intro\",\n  \"moduleTitles\": [\"Modul 1\", \"Modul 2\",]\n}\n```\nHope this helps!"
+    };
+    mockGenerateContent.mockResolvedValue(mockResponse);
+
+    const result = await generateInitialCurriculumOutline('Digital Marketing');
+    expect(result).not.toBeNull();
+    expect(result?.modules).toHaveLength(2);
+  });
+
   it('should return null when parsing fails', async () => {
     const mockResponse = {
       text: 'not json'

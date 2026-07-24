@@ -223,6 +223,29 @@ export async function deductUserPoints(
   }
 }
 
+export async function refundUserPoints(
+  request: Request,
+  env: Env,
+  amount: number,
+): Promise<{ success: boolean; remainingPoints: number }> {
+  const cookies = parseCookies(request);
+  const sid = cookies[SESSION_COOKIE];
+  if (!sid || !env.SESSIONS) return { success: false, remainingPoints: 0 };
+  const raw = await env.SESSIONS.get(`sess:${sid}`);
+  if (!raw) return { success: false, remainingPoints: 0 };
+  try {
+    const session = JSON.parse(raw) as Session;
+    if (session.points === undefined) session.points = DEFAULT_INITIAL_POINTS;
+    session.points += amount;
+    await env.SESSIONS.put(`sess:${sid}`, JSON.stringify(session), {
+      expirationTtl: SESSION_TTL_SECONDS,
+    });
+    return { success: true, remainingPoints: session.points };
+  } catch {
+    return { success: false, remainingPoints: 0 };
+  }
+}
+
 export async function deleteSession(request: Request, env: Env): Promise<void> {
   const cookies = parseCookies(request);
   const sid = cookies[SESSION_COOKIE];

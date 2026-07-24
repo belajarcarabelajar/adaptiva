@@ -158,7 +158,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = memo(({
           ))}
         </div>
         <footer className="hidden md:block text-center text-xs text-brand-black/60 dark:text-gray-400 mt-auto pt-4"> 
-            Adaptiva Study by BCB Academy &copy; {new Date().getFullYear()}.
+            Adaptiva by @belajarcarabelajar &copy; {new Date().getFullYear()}.
         </footer>
       </div>
     </aside>
