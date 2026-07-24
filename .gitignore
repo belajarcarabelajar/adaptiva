@@ -42,3 +42,7 @@ apps/*/.env.local
 .wrangler/
 .dev.vars
 .dev.vars.*
+
+# Local gemini directory
+.gemini/
+

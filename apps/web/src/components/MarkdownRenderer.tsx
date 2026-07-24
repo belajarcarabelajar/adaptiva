@@ -1,9 +1,6 @@
-
-
-
-
 import React, { memo } from 'react';
 import DOMPurify from 'dompurify';
+import katex from 'katex';
 
 // Configure DOMPurify to enforce target="_blank" and rel="noopener noreferrer" on all links
 if (typeof DOMPurify.addHook === 'function') {
@@ -14,8 +11,6 @@ if (typeof DOMPurify.addHook === 'function') {
     }
   });
 }
-
-// Helper function to apply inline Markdown formatting to HTML
 
 // Pre-compiled regular expressions for performance optimization
 const HTML_ATTR_REGEXES = [
@@ -41,37 +36,100 @@ const ITALIC_ASTERISK_REGEX = /(^|\s)\*(?!\s|\*)(.+?)(?<!\s|\*)\*(?=\s|$)/g;
 const NUMBERED_LIST_REGEX = /^(\d+)\.\s+/;
 const BULLETED_LIST_REGEX = /^(\*|-)\s+/;
 const NUMBERED_LIST_CHECK_REGEX = /^\d+\.\s/;
+const HEADING_REGEX = /^(#{1,6})\s*(.*)/;
 
+// DOMPurify configuration allowing KaTeX math SVG/HTML tags and attributes safely
+const DOMPURIFY_CONFIG = {
+  ADD_TAGS: [
+    'a', 'span', 'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li',
+    'math', 'annotation', 'semantics', 'mrow', 'msup', 'msub', 'mfrac', 'mover',
+    'munder', 'msubsup', 'mspace', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd',
+    'svg', 'path', 'use', 'g', 'line', 'rect', 'circle', 'strong', 'em', 'code', 'pre'
+  ],
+  ADD_ATTR: [
+    'href', 'target', 'rel', 'class', 'style', 'id', 'xmlns', 'viewBox', 'd',
+    'fill', 'stroke', 'aria-hidden', 'stroke-width', 'role', 'encoding'
+  ]
+};
+
+// Helper function to render LaTeX expressions (inline & block display) using KaTeX
+export const renderLatexInText = (text: string): string => {
+  if (!text) return "";
+  let processed = text;
+
+  // 1. Block math: $$ ... $$ or \[ ... \]
+  processed = processed.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
+    try {
+      return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false });
+    } catch {
+      return `$$${math}$$`;
+    }
+  });
+
+  processed = processed.replace(/\\\[([\s\S]+?)\\\]/g, (_, math) => {
+    try {
+      return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false });
+    } catch {
+      return `\\[${math}\\]`;
+    }
+  });
+
+  // 2. Inline math: \( ... \) or $ ... $ (excluding dollar amounts like $5 or $100)
+  processed = processed.replace(/\\\(([\s\S]+?)\\\)/g, (_, math) => {
+    try {
+      return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false });
+    } catch {
+      return `\\(${math}\\)`;
+    }
+  });
+
+  // Inline $...$ math: dollar sign followed by non-space, containing math chars/letters, closed by dollar sign
+  processed = processed.replace(/(^|\s|\()\$([^\$\n]+?)\$(?=\s|\)|[.,;:!?]|$)/g, (match, prefix, math) => {
+    if (/^\d+(\.\d+)?$/.test(math.trim()) || math.startsWith(' ')) {
+      return match;
+    }
+    try {
+      const rendered = katex.renderToString(math.trim(), { displayMode: false, throwOnError: false });
+      return `${prefix}${rendered}`;
+    } catch {
+      return match;
+    }
+  });
+
+  return processed;
+};
+
+// Helper function to apply inline Markdown formatting, em dash cleanup, and LaTeX to HTML
 export const applyInlineFormatting = (text: string): string => {
   if (!text) return "";
   let formattedText = text;
+
+  // 0. Em Dash Replacement Rule: Replace any em dashes (— / – / --) with ', ' or '. '
+  formattedText = formattedText.replace(/\s*[\u2014\u2013]\s*/g, ', ');
+  formattedText = formattedText.replace(/\s+--\s+/g, ', ');
 
   // Helper to strip common HTML attribute patterns from a string
   const stripHtmlAttributesFromString = (str: string): string => {
     let cleanedStr = str;
 
-    // Remove common quoted attributes: "attr=value", 'attr=value', attr="value", attr='value'
     HTML_ATTR_REGEXES.forEach(pattern => {
         cleanedStr = cleanedStr.replace(pattern, '');
     });
 
-    // Remove potentially unclosed/malformed attributes if they look like ` "attr=` or ` attr="` at string end
-    cleanedStr = cleanedStr.replace(UNCLOSED_QUOTE_ATTR_REGEX, '$1'); // "attr=
-    cleanedStr = cleanedStr.replace(UNCLOSED_ATTR_QUOTE_REGEX, '$1'); // attr=" or attr='
-
-    // Remove orphaned HTML tags often mistakenly added by AI
+    cleanedStr = cleanedStr.replace(UNCLOSED_QUOTE_ATTR_REGEX, '$1');
+    cleanedStr = cleanedStr.replace(UNCLOSED_ATTR_QUOTE_REGEX, '$1');
     cleanedStr = cleanedStr.replace(ORPHANED_HTML_TAG_REGEX, '');
-
 
     return cleanedStr.trim();
   };
 
+  // 1. Render LaTeX before processing standard Markdown symbols
+  formattedText = renderLatexInText(formattedText);
 
-  // Markdown links: [text](url)
+  // 2. Markdown links: [text](url)
   formattedText = formattedText.replace(MARKDOWN_LINK_REGEX, (match, rawLinkText, capturedUrlContent) => {
     let urlToUse = capturedUrlContent;
 
-    // Clean the URL part
     const firstDoubleQuoteIndexUrl = urlToUse.indexOf('"');
     if (firstDoubleQuoteIndexUrl !== -1) {
         const suffix = urlToUse.substring(firstDoubleQuoteIndexUrl);
@@ -88,23 +146,20 @@ export const applyInlineFormatting = (text: string): string => {
             urlToUse = urlToUse.substring(0, firstSingleQuoteIndexUrl);
         }
     }
-    urlToUse = stripHtmlAttributesFromString(urlToUse.trim()); // Further clean and trim URL
-
+    urlToUse = stripHtmlAttributesFromString(urlToUse.trim());
 
     if (MALICIOUS_PROTOCOL_REGEX.test(urlToUse)) {
-        return match; // Return original match if potentially malicious
+        return match;
     }
 
-    // Clean the link text part
     let cleanedLinkText = stripHtmlAttributesFromString(rawLinkText);
     
-    if (!cleanedLinkText.trim() && urlToUse) { // If link text becomes empty after cleaning, use URL as text
+    if (!cleanedLinkText.trim() && urlToUse) {
         cleanedLinkText = urlToUse;
-    } else if (!cleanedLinkText.trim() && !urlToUse) { // Both empty, fallback to original raw link text or empty
+    } else if (!cleanedLinkText.trim() && !urlToUse) {
         cleanedLinkText = rawLinkText || ""; 
     }
     
-    // If URL is also empty after cleaning, it's not a valid link, return original text.
     if (!urlToUse.trim()) {
         return match; 
     }
@@ -112,16 +167,14 @@ export const applyInlineFormatting = (text: string): string => {
     return `<a href="${urlToUse}" target="_blank" rel="noopener noreferrer" class="text-brand-orange hover:text-brand-red dark:text-orange-400 dark:hover:text-red-500 underline">${cleanedLinkText}</a>`;
   });
 
-  // Autolink URLs (should run after specific Markdown link parsing)
+  // 3. Autolink URLs
   formattedText = formattedText.replace(AUTOLINK_URL_REGEX, (urlMatch, p1, p2, p3, offset) => {
-    // Check if this match is already part of an <a> tag's href or text created by the Markdown link rule above.
-    // This is a simple check; more robust would involve parsing the HTML structure.
     const surroundingChars = formattedText.substring(
         Math.max(0, offset - 10),
         offset + urlMatch.length + 10
     );
-    if (surroundingChars.includes('href="') || surroundingChars.includes('>') && surroundingChars.includes('</a>')) { // Heuristic
-      return urlMatch; // Already linked, skip
+    if (surroundingChars.includes('href="') || surroundingChars.includes('>') && surroundingChars.includes('</a>')) {
+      return urlMatch;
     }
 
     let properUrl = urlMatch;
@@ -133,15 +186,17 @@ export const applyInlineFormatting = (text: string): string => {
     }
     return `<a href="${properUrl}" target="_blank" rel="noopener noreferrer" class="text-brand-orange hover:text-brand-red dark:text-orange-400 dark:hover:text-red-500 underline">${urlMatch}</a>`;
   });
-  
-  // Bold: **text** or __text__
-  formattedText = formattedText.replace(BOLD_REGEX, (match, p1, p2) => `<strong>${p1 || p2}</strong>`);
-  
-  // Italic: _text_ or *text*
-  formattedText = formattedText.replace(ITALIC_UNDERSCORE_REGEX, '<em>$1</em>');
-  formattedText = formattedText.replace(ITALIC_ASTERISK_REGEX, '$1<em>$2</em>');
 
-  return formattedText;
+  // 4. Strip emojis & clean raw asterisks so asterisks never leak into plain text
+  formattedText = formattedText.replace(/\p{Extended_Pictographic}/gu, '');
+  formattedText = formattedText.replace(/\*\*\*(.*?)\*\*\*/g, '$1');
+  formattedText = formattedText.replace(BOLD_REGEX, (match, p1, p2) => p1 || p2);
+  formattedText = formattedText.replace(/(\*\*\*|\*\*|\*)/g, '');
+
+  // 5. Italic: _text_
+  formattedText = formattedText.replace(ITALIC_UNDERSCORE_REGEX, '$1');
+
+  return formattedText.trim();
 };
 
 interface MarkdownRendererProps {
@@ -152,45 +207,59 @@ interface MarkdownRendererProps {
 function MarkdownRendererInternal({ content, baseTextSize = "text-xl" }: MarkdownRendererProps) {
   if (!content) return null;
 
+  // Pre-process content: global em dash cleanup & emoji removal
+  const cleanContent = content
+    .replace(/\s*[\u2014\u2013]\s*/g, ', ')
+    .replace(/\s+--\s+/g, ', ')
+    .replace(/\p{Extended_Pictographic}/gu, '');
+
   const createMarkup = (line: string, key: string | number): React.ReactElement | null => {
-    const numberedListMatch = line.match(NUMBERED_LIST_REGEX);
+    const trimmedLine = line.trim();
+    if (!trimmedLine) return null;
 
-    let htmlContentSource = ""; 
+    const headingMatch = trimmedLine.match(HEADING_REGEX);
+    const numberedListMatch = trimmedLine.match(NUMBERED_LIST_REGEX);
 
-    if (line.startsWith('# ')) {
-      htmlContentSource = line.substring(2);
-      const formattedHtml = applyInlineFormatting(htmlContentSource);
-      const sanitizedHtml = DOMPurify.sanitize(formattedHtml);
-      return <h1 key={key} className={`text-4xl md:text-5xl font-bold my-5 md:my-6 text-brand-blue dark:text-blue-300`} dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
-    } else if (line.startsWith('## ')) {
-      htmlContentSource = line.substring(3);
-      const formattedHtml = applyInlineFormatting(htmlContentSource);
-      const sanitizedHtml = DOMPurify.sanitize(formattedHtml);
-      return <h2 key={key} className={`text-3xl md:text-4xl font-semibold my-4 md:my-5 text-brand-blue dark:text-blue-300`} dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
-    } else if (line.startsWith('### ')) {
-      htmlContentSource = line.substring(4);
-      const formattedHtml = applyInlineFormatting(htmlContentSource);
-      const sanitizedHtml = DOMPurify.sanitize(formattedHtml);
-      return <h3 key={key} className={`text-2xl md:text-3xl font-semibold my-3 md:my-4 text-brand-orange dark:text-orange-400`} dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
-    } else if (line.startsWith('* ') || line.startsWith('- ') || line.startsWith('✅ ') || numberedListMatch) {
-      let contentPart = line;
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const titleText = headingMatch[2].trim();
+      const formattedHtml = applyInlineFormatting(titleText);
+      const sanitizedHtml = DOMPurify.sanitize(formattedHtml, DOMPURIFY_CONFIG);
+
+      switch (level) {
+        case 1:
+          return <h1 key={key} className="text-2xl md:text-3xl font-bold my-4 md:my-5 leading-tight text-brand-blue dark:text-blue-300" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+        case 2:
+          return <h2 key={key} className="text-xl md:text-2xl font-semibold my-3 md:my-4 leading-snug text-brand-blue dark:text-blue-300" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+        case 3:
+          return <h3 key={key} className="text-lg md:text-xl font-semibold my-2.5 md:my-3 leading-snug text-brand-orange dark:text-orange-400" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+        case 4:
+          return <h4 key={key} className="text-base md:text-lg font-semibold my-2 md:my-2.5 text-brand-orange dark:text-orange-400" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+        case 5:
+          return <h5 key={key} className="text-sm md:text-base font-semibold my-1.5 md:my-2 text-brand-blue dark:text-blue-300" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+        case 6:
+        default:
+          return <h6 key={key} className="text-xs md:text-sm font-semibold my-1 md:my-1.5 text-brand-blue dark:text-blue-300" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+      }
+    } else if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ') || trimmedLine.startsWith('✅ ') || numberedListMatch) {
+      let contentPart = trimmedLine;
       let displayPrefix = '';
 
-      if (line.startsWith('✅ ')) {
-        contentPart = line.substring(2); 
+      if (trimmedLine.startsWith('✅ ')) {
+        contentPart = trimmedLine.substring(2); 
         displayPrefix = '✅ ';
         if (BULLETED_LIST_REGEX.test(contentPart)) {
             contentPart = contentPart.substring(contentPart.match(BULLETED_LIST_REGEX)![0].length);
         } else if (NUMBERED_LIST_REGEX.test(contentPart)) {
             contentPart = contentPart.substring(contentPart.match(NUMBERED_LIST_REGEX)![0].length);
         }
-      } else if (line.startsWith('* ') || line.startsWith('- ')) {
-        contentPart = line.substring(2);
+      } else if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
+        contentPart = trimmedLine.substring(2);
         if (BULLETED_LIST_REGEX.test(contentPart)) {
             contentPart = contentPart.substring(contentPart.match(BULLETED_LIST_REGEX)![0].length);
         }
       } else if (numberedListMatch) {
-        contentPart = line.substring(numberedListMatch[0].length);
+        contentPart = trimmedLine.substring(numberedListMatch[0].length);
         const innerMatch = contentPart.match(NUMBERED_LIST_REGEX);
         if (innerMatch) {
             contentPart = contentPart.substring(innerMatch[0].length);
@@ -198,7 +267,7 @@ function MarkdownRendererInternal({ content, baseTextSize = "text-xl" }: Markdow
       }
       
       const formattedContentPart = applyInlineFormatting(contentPart);
-      const sanitizedContentPart = DOMPurify.sanitize(formattedContentPart, { ADD_TAGS: ["a"], ADD_ATTR: ['href', 'target', 'rel', 'class'] });
+      const sanitizedContentPart = DOMPurify.sanitize(formattedContentPart, DOMPURIFY_CONFIG);
       return (
         <li key={key} className={`ml-6 md:ml-8 my-1 md:my-1.5 ${baseTextSize} dark:text-gray-200`}>
           {displayPrefix && <span className="mr-1">{displayPrefix}</span>}
@@ -207,13 +276,12 @@ function MarkdownRendererInternal({ content, baseTextSize = "text-xl" }: Markdow
       );
     }
     
-    htmlContentSource = line;
-    const formattedLine = applyInlineFormatting(htmlContentSource);
-    const sanitizedLine = DOMPurify.sanitize(formattedLine, { ADD_TAGS: ["a"], ADD_ATTR: ['href', 'target', 'rel', 'class'] });
+    const formattedLine = applyInlineFormatting(trimmedLine);
+    const sanitizedLine = DOMPurify.sanitize(formattedLine, DOMPURIFY_CONFIG);
     return <p key={key} className={`my-3 md:my-3.5 ${baseTextSize} dark:text-gray-200`} dangerouslySetInnerHTML={{ __html: sanitizedLine }} />;
   };
   
-  const lines = content.split('\n');
+  const lines = cleanContent.split('\n');
   const processedLines = lines.filter(line => line.trim() !== ''); 
 
   const elements = processedLines.map((line, index) => {

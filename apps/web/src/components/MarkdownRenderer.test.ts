@@ -1,42 +1,64 @@
 import { describe, it, expect } from 'vitest';
-import { applyInlineFormatting } from './MarkdownRenderer';
+import { applyInlineFormatting, renderLatexInText } from './MarkdownRenderer';
 
 describe('applyInlineFormatting', () => {
   it('should return empty string for empty input', () => {
     expect(applyInlineFormatting('')).toBe('');
   });
 
-  describe('bold formatting', () => {
-    it('should format **bold** text', () => {
-      expect(applyInlineFormatting('This is **bold** text')).toBe('This is <strong>bold</strong> text');
+  describe('em dash replacement rule', () => {
+    it('should replace unicode em dashes (— and –) with a comma', () => {
+      expect(applyInlineFormatting('Adaptiva — AI Study Assistant')).toBe('Adaptiva, AI Study Assistant');
+      expect(applyInlineFormatting('Concept–Definition')).toBe('Concept, Definition');
     });
 
-    it('should format __bold__ text', () => {
-      expect(applyInlineFormatting('This is __bold__ text')).toBe('This is <strong>bold</strong> text');
+    it('should replace isolated double hyphens with a comma', () => {
+      expect(applyInlineFormatting('Primary concept -- secondary detail')).toBe('Primary concept, secondary detail');
+    });
+  });
+
+  describe('LaTeX math rendering', () => {
+    it('should render inline LaTeX math $E=mc^2$', () => {
+      const output = renderLatexInText('$E=mc^2$');
+      expect(output).toContain('katex');
+      expect(output).toContain('E=mc');
     });
 
-    it('should format multiple bold texts', () => {
-      expect(applyInlineFormatting('**bold1** and __bold2__')).toBe('<strong>bold1</strong> and <strong>bold2</strong>');
+    it('should render block LaTeX math $$a^2 + b^2 = c^2$$', () => {
+      const output = renderLatexInText('$$a^2 + b^2 = c^2$$');
+      expect(output).toContain('katex-display');
+      expect(output).toContain('a^2 + b^2 = c^2');
+    });
+  });
+
+  describe('bold formatting and asterisk cleanup', () => {
+    it('should clean **bold** text and asterisks', () => {
+      expect(applyInlineFormatting('This is **bold** text')).toBe('This is bold text');
+    });
+
+    it('should clean __bold__ text', () => {
+      expect(applyInlineFormatting('This is __bold__ text')).toBe('This is bold text');
+    });
+
+    it('should clean malformed prompt asterisks such as ***bold italic*** or stray **', () => {
+      expect(applyInlineFormatting('***Important note***')).toBe('Important note');
+      expect(applyInlineFormatting('**unclosed bold text')).toBe('unclosed bold text');
     });
   });
 
   describe('italic formatting', () => {
     it('should format _italic_ text', () => {
-      expect(applyInlineFormatting('This is _italic_ text')).toBe('This is <em>italic</em> text');
+      expect(applyInlineFormatting('This is _italic_ text')).toBe('This is italic text');
     });
 
     it('should format *italic* text', () => {
-      expect(applyInlineFormatting('This is *italic* text')).toBe('This is <em>italic</em> text');
-    });
-
-    it('should format multiple italic texts', () => {
-      expect(applyInlineFormatting('_italic1_ and *italic2*')).toBe('<em>italic1</em> and <em>italic2</em>');
+      expect(applyInlineFormatting('This is *italic* text')).toBe('This is italic text');
     });
   });
 
-  describe('combined formatting', () => {
-    it('should handle both bold and italic', () => {
-      expect(applyInlineFormatting('**bold** and _italic_')).toBe('<strong>bold</strong> and <em>italic</em>');
+  describe('emoji stripping', () => {
+    it('should strip emojis from text', () => {
+      expect(applyInlineFormatting('🚀 Clean Title 📚')).toBe('Clean Title');
     });
   });
 

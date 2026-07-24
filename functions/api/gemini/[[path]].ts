@@ -12,7 +12,7 @@
 //   GEMINI_MODEL_DEFAULT(optional)  - default model hint, NOT used to rewrite URLs
 //
 // The SDK in the browser chooses the model per-call and constructs the URL
-// (e.g. /v1beta/models/gemini-3.5-flash:generateContent). We forward whatever
+// (e.g. /v1beta/models/gemini-2.5-flash:generateContent). We forward whatever
 // path the SDK gives us, so adding a new model on the frontend needs no
 // change here.
 

@@ -203,6 +203,7 @@ export interface HistoryItem {
   timestamp: number;
   moduleCompletionStatus: Record<string, { summaryLoaded: boolean; quizTaken: boolean; }>; 
   planTaskCompletionStatus: Record<number, boolean>; 
+  planSubtaskCompletionStatus?: Record<string, boolean>; 
   overallProgress: number; 
   journeyCompleted: boolean; 
   quizHistory: StoredQuizAttempt[];
@@ -219,3 +220,26 @@ export type CurriculumSubTab =
   | 'exam'           
   | 'flashcards'
   | 'study_log'; // Replaces quiz_history, exam_history, flashcards_history
+
+export type ViewMode = 'input' | 'loading' | 'results' | 'error';
+export type ExamViewMode = 'config' | 'taking' | 'results' | 'history_summary' | 'module_selection';
+
+export interface SessionCheckpoint {
+  selectedHistoryItemId: string | null;
+  viewMode: ViewMode;
+  activeTab: ActiveTab;
+  curriculumSubTab: CurriculumSubTab;
+  selectedMaterialModuleIndex: number | null;
+  
+  // Feature-specific checkpoints
+  currentQuizModuleTitle?: string | null;
+  currentQuizQuestionIndex?: number;
+  activeExamModuleTitle?: string | null;
+  examViewMode?: ExamViewMode;
+  currentExamQuestionIndex?: number;
+  activeFlashcardModuleTitle?: string | null;
+  flashcardSubView?: FlashcardSubView;
+  currentFlashcardIndexInStack?: number;
+  
+  timestamp: number;
+}

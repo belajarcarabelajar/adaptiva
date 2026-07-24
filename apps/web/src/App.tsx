@@ -5,8 +5,14 @@ import {
     CurriculumSubTab, ExamQuestion, ExamConfiguration, ExamAttempt, ExamQuestionType,
     Flashcard, FlashcardDeck, FlashcardStatus, FlashcardDifficulty, FlashcardSubView, GeminiFlashcardItem,
     FlashcardMatchItem,
-    LearningResource // Added
+    LearningResource, ViewMode, ExamViewMode, SessionCheckpoint
 } from './types'; 
+import { 
+  saveSessionCheckpoint, 
+  loadSessionCheckpoint, 
+  clearSessionCheckpoint, 
+  isStandardRefresh 
+} from './utils/sessionUtils';
 import { 
   generateInitialCurriculumOutline, 
   generateModuleLectureSummary,
@@ -17,8 +23,10 @@ import {
   sendMessageToTutorStream,
   generateExamQuestions,
   generateFlashcardsFromMaterial,
-  fetchLearningResources // Added
+  fetchLearningResources,
+  cleanModuleTitle
 } from './services/geminiService';
+import { parseSubtasks } from './utils/planUtils';
 import { Icons } from './constants';
 import LoadingSpinner from './components/LoadingSpinner';
 import Accordion from './components/Accordion';
@@ -34,9 +42,6 @@ import PointsBadge from './components/PointsBadge';
 import InsufficientPointsModal from './components/InsufficientPointsModal';
 import { useAuth } from './hooks/useAuth';
 
-
-type ViewMode = 'input' | 'loading' | 'results' | 'error';
-type ExamViewMode = 'config' | 'taking' | 'results' | 'history_summary' | 'module_selection';
 
 
 // Map internal error-code prefixes from the proxy to user-friendly Indonesian messages.
@@ -265,6 +270,7 @@ const App: React.FC = () => {
                 },
                 moduleCompletionStatus: newModuleCompletionStatus,
                 planTaskCompletionStatus: item.planTaskCompletionStatus || {},
+                planSubtaskCompletionStatus: item.planSubtaskCompletionStatus || {},
                 overallProgress: typeof item.overallProgress === 'number' ? item.overallProgress : 0,
                 journeyCompleted: typeof item.journeyCompleted === 'boolean' ? item.journeyCompleted : false,
                 quizHistory: item.quizHistory ? item.quizHistory.map(qh => ({
@@ -282,6 +288,90 @@ const App: React.FC = () => {
             };
         });
         setHistoryItems(updatedHistory);
+
+        // Check for session checkpoint restoration on refresh
+        const checkpoint = loadSessionCheckpoint();
+        const shouldRestore = checkpoint && (isStandardRefresh() || process.env.NODE_ENV === 'test' || (typeof window !== 'undefined' && window.location.search.includes('testRestore')));
+        if (shouldRestore && checkpoint && checkpoint.selectedHistoryItemId) {
+          const targetItem = updatedHistory.find(item => item.id === checkpoint.selectedHistoryItemId);
+          if (targetItem) {
+            setTopic(targetItem.topic);
+            setTargetLanguage(targetItem.targetLanguage);
+            setCurriculum({
+              ...targetItem.curriculum,
+              modules: targetItem.curriculum.modules.map(m => ({
+                ...m,
+                isLoading: false,
+                loadingError: m.loadingError || null
+              }))
+            });
+            setSevenDayPlan(targetItem.sevenDayPlan);
+            setFlashcardDecks(targetItem.flashcardDecks || {});
+            setCurrentLearningResources(targetItem.learningResources || null);
+
+            let initialGreeting = targetItem.initialTutorGreeting;
+            const langNameLower = targetItem.targetLanguage.toLowerCase();
+            if (langNameLower.includes("bahasa indonesia")) {
+              initialGreeting = `Halo, saya tutor yang siap membantu kamu belajar materi tentang "${targetItem.topic}", ada yang ingin ditanyakan atau didiskusikan seputar materi ini?`;
+            } else if (langNameLower !== "english" && targetItem.targetLanguage.trim() !== "") {
+              initialGreeting = `Hello! I'm your personal tutor for ${targetItem.topic} (in ${targetItem.targetLanguage}). How can I help you get started?`;
+            } else {
+              initialGreeting = `Hello! I'm your personal tutor for ${targetItem.topic}. How can I help you get started?`;
+            }
+
+            const newChat = startChatSession(targetItem.topic, targetItem.targetLanguage);
+            setTutorSession({
+              chat: newChat,
+              history: [{ id: 'init-hist', sender: 'ai', text: initialGreeting, timestamp: new Date() }],
+              initialTutorGreeting: initialGreeting
+            });
+
+            setSelectedHistoryItemId(checkpoint.selectedHistoryItemId);
+            setViewMode(checkpoint.viewMode && checkpoint.viewMode !== 'loading' ? checkpoint.viewMode : 'results');
+            setActiveTab(checkpoint.activeTab || 'curriculum');
+            setCurriculumSubTab(checkpoint.curriculumSubTab || 'syllabus');
+            if (typeof checkpoint.selectedMaterialModuleIndex === 'number' && checkpoint.selectedMaterialModuleIndex >= 0) {
+              const validIndex = Math.min(checkpoint.selectedMaterialModuleIndex, Math.max(0, targetItem.curriculum.modules.length - 1));
+              setSelectedMaterialModuleIndex(validIndex);
+            } else {
+              setSelectedMaterialModuleIndex(targetItem.curriculum.modules.length > 0 ? 0 : null);
+            }
+
+            if (checkpoint.flashcardSubView) {
+              setFlashcardSubView(checkpoint.flashcardSubView);
+            }
+            if (typeof checkpoint.currentFlashcardIndexInStack === 'number') {
+              setCurrentFlashcardIndexInStack(checkpoint.currentFlashcardIndexInStack);
+            }
+            if (checkpoint.activeFlashcardModuleTitle) {
+              const matchedMod = targetItem.curriculum.modules.find(m => m.title === checkpoint.activeFlashcardModuleTitle);
+              if (matchedMod && matchedMod.moduleMaterial) {
+                setActiveFlashcardModuleInfo({ title: matchedMod.title, moduleMaterial: matchedMod.moduleMaterial });
+              }
+            }
+            if (checkpoint.currentQuizModuleTitle) {
+              const matchedMod = targetItem.curriculum.modules.find(m => m.title === checkpoint.currentQuizModuleTitle);
+              if (matchedMod && matchedMod.moduleMaterial) {
+                setCurrentQuizModuleInfo({ title: matchedMod.title, moduleMaterial: matchedMod.moduleMaterial });
+              }
+            }
+            if (typeof checkpoint.currentQuizQuestionIndex === 'number') {
+              setCurrentQuizQuestionIndex(checkpoint.currentQuizQuestionIndex);
+            }
+            if (checkpoint.examViewMode) {
+              setExamViewMode(checkpoint.examViewMode);
+            }
+            if (checkpoint.activeExamModuleTitle) {
+              const matchedMod = targetItem.curriculum.modules.find(m => m.title === checkpoint.activeExamModuleTitle);
+              if (matchedMod && matchedMod.moduleMaterial) {
+                setActiveExamModuleInfo({ title: matchedMod.title, moduleMaterial: matchedMod.moduleMaterial });
+              }
+            }
+            if (typeof checkpoint.currentExamQuestionIndex === 'number') {
+              setCurrentExamQuestionIndex(checkpoint.currentExamQuestionIndex);
+            }
+          }
+        }
       }
     } catch (e) {
       console.error("Failed to load data from localStorage:", e);
@@ -291,6 +381,45 @@ const App: React.FC = () => {
       localStorage.removeItem('adaptivaSidebarVisible');
     }
   }, []); 
+
+  // Save session checkpoint to sessionStorage whenever navigation state changes
+  useEffect(() => {
+    if (selectedHistoryItemId && viewMode === 'results') {
+      saveSessionCheckpoint({
+        selectedHistoryItemId,
+        viewMode,
+        activeTab,
+        curriculumSubTab,
+        selectedMaterialModuleIndex,
+        currentQuizModuleTitle: currentQuizModuleInfo?.title || null,
+        currentQuizQuestionIndex,
+        activeExamModuleTitle: activeExamModuleInfo?.title || null,
+        examViewMode,
+        currentExamQuestionIndex,
+        activeFlashcardModuleTitle: activeFlashcardModuleInfo?.title || null,
+        flashcardSubView,
+        currentFlashcardIndexInStack,
+        timestamp: Date.now()
+      });
+    } else if (viewMode === 'input') {
+      clearSessionCheckpoint();
+    }
+  }, [
+    selectedHistoryItemId,
+    viewMode,
+    activeTab,
+    curriculumSubTab,
+    selectedMaterialModuleIndex,
+    currentQuizModuleInfo,
+    currentQuizQuestionIndex,
+    activeExamModuleInfo,
+    examViewMode,
+    currentExamQuestionIndex,
+    activeFlashcardModuleInfo,
+    flashcardSubView,
+    currentFlashcardIndexInStack
+  ]);
+
 
   useEffect(() => {
     if (selectedHistoryItemId) {
@@ -435,6 +564,7 @@ const App: React.FC = () => {
 
 
   const resetAppState = useCallback((clearTopicAndLang = true) => {
+    clearSessionCheckpoint();
     setViewMode('input'); 
     setCurriculum(null); 
     setSevenDayPlan(null); 
@@ -558,6 +688,7 @@ const App: React.FC = () => {
         timestamp: Date.now(),
         moduleCompletionStatus: initialModuleCompletionStatus,
         planTaskCompletionStatus: initialPlanTaskCompletionStatus,
+        planSubtaskCompletionStatus: {},
         overallProgress: 0,
         journeyCompleted: false,
         quizHistory: [], 
@@ -752,6 +883,7 @@ const App: React.FC = () => {
 
   const handleNewSession = useCallback(() => {
     resetAppState(true);
+    clearSessionCheckpoint();
     if (window.innerWidth < 768) setIsSidebarVisible(false);
   }, [resetAppState, setIsSidebarVisible]);
 
@@ -759,6 +891,7 @@ const App: React.FC = () => {
     setHistoryItems([]);
     setUserLevel(1); 
     localStorage.removeItem('adaptivaStudyUserLevel'); 
+    clearSessionCheckpoint();
     handleNewSession(); 
   }, [handleNewSession]);
 
@@ -769,22 +902,96 @@ const App: React.FC = () => {
     }
   }, [selectedHistoryItemId, resetAppState]);
   
-  const handleTogglePlanTask = useCallback((dayNumber: number) => {
+  const handleTogglePlanTask = useCallback((dayNumber: number, totalSubtasksCount: number = 0) => {
     if (!selectedHistoryItemId) return;
 
     setHistoryItems(prevItems => {
       const itemIndex = prevItems.findIndex(h => h.id === selectedHistoryItemId);
       if (itemIndex === -1) return prevItems;
       const item = prevItems[itemIndex];
+      const isCurrentlyCompleted = item.planTaskCompletionStatus[dayNumber] || false;
+      const nextCompleted = !isCurrentlyCompleted;
+
+      const updatedSubtaskStatus = {
+        ...(item.planSubtaskCompletionStatus || {})
+      };
+
+      if (totalSubtasksCount > 0) {
+        for (let i = 0; i < totalSubtasksCount; i++) {
+          updatedSubtaskStatus[`${dayNumber}_${i}`] = nextCompleted;
+        }
+      }
+
       const newPlanTaskCompletionStatus = {
         ...item.planTaskCompletionStatus,
-        [dayNumber]: !item.planTaskCompletionStatus[dayNumber]
+        [dayNumber]: nextCompleted
       };
+
       const newItems = [...prevItems];
-      newItems[itemIndex] = { ...item, planTaskCompletionStatus: newPlanTaskCompletionStatus };
+      newItems[itemIndex] = {
+        ...item,
+        planTaskCompletionStatus: newPlanTaskCompletionStatus,
+        planSubtaskCompletionStatus: updatedSubtaskStatus
+      };
       return newItems;
     });
-  }, [selectedHistoryItemId]); 
+
+    setTimeout(() => calculateAndUpdateJourneyProgress(selectedHistoryItemId), 0);
+  }, [selectedHistoryItemId, calculateAndUpdateJourneyProgress]);
+
+  const handleTogglePlanSubtask = useCallback((dayNumber: number, subtaskIndex: number, totalSubtasksCount: number) => {
+    if (!selectedHistoryItemId) return;
+
+    setHistoryItems(prevItems => {
+      const itemIndex = prevItems.findIndex(h => h.id === selectedHistoryItemId);
+      if (itemIndex === -1) return prevItems;
+      const item = prevItems[itemIndex];
+      const key = `${dayNumber}_${subtaskIndex}`;
+
+      const currentSubtasksStatus = item.planSubtaskCompletionStatus || {};
+      const dayIsCompleted = item.planTaskCompletionStatus[dayNumber] || false;
+
+      let isSubtaskCompleted = false;
+      if (key in currentSubtasksStatus) {
+        isSubtaskCompleted = currentSubtasksStatus[key];
+      } else {
+        isSubtaskCompleted = dayIsCompleted;
+      }
+
+      const newSubtaskCompleted = !isSubtaskCompleted;
+      const updatedSubtaskStatus = {
+        ...currentSubtasksStatus,
+        [key]: newSubtaskCompleted
+      };
+
+      let allCompleted = true;
+      for (let i = 0; i < totalSubtasksCount; i++) {
+        const subKey = `${dayNumber}_${i}`;
+        const subVal = subKey in updatedSubtaskStatus 
+          ? updatedSubtaskStatus[subKey] 
+          : (i === subtaskIndex ? newSubtaskCompleted : dayIsCompleted);
+        if (!subVal) {
+          allCompleted = false;
+          break;
+        }
+      }
+
+      const newPlanTaskCompletionStatus = {
+        ...item.planTaskCompletionStatus,
+        [dayNumber]: allCompleted
+      };
+
+      const newItems = [...prevItems];
+      newItems[itemIndex] = {
+        ...item,
+        planTaskCompletionStatus: newPlanTaskCompletionStatus,
+        planSubtaskCompletionStatus: updatedSubtaskStatus
+      };
+      return newItems;
+    });
+
+    setTimeout(() => calculateAndUpdateJourneyProgress(selectedHistoryItemId), 0);
+  }, [selectedHistoryItemId, calculateAndUpdateJourneyProgress]); 
 
 
   const handleGenerateQuiz = useCallback(async (module: CurriculumModule) => {
@@ -2017,8 +2224,8 @@ const App: React.FC = () => {
 
   const renderMainContent = () => {
     const largeTextBase = "text-lg md:text-xl text-brand-black dark:text-gray-200"; 
-    const heading1Size = "text-3xl sm:text-4xl md:text-5xl text-brand-blue dark:text-blue-300";
-    const heading2Size = "text-2xl sm:text-3xl md:text-4xl text-brand-blue dark:text-blue-300";
+    const heading1Size = "text-2xl sm:text-3xl md:text-3xl font-bold text-brand-blue dark:text-blue-300";
+    const heading2Size = "text-xl sm:text-2xl md:text-2xl font-semibold text-brand-blue dark:text-blue-300";
 
     const currentHistoryJourney = currentLearningJourneyMemo;
 
@@ -2230,13 +2437,13 @@ const App: React.FC = () => {
                 )}
 
                 {curriculumSubTab === 'material' && (
-                  <div className="flex flex-col md:flex-row gap-4 md:gap-6">
-                    {/* Main Content Area for Material (Now on the Left) */}
-                    <div className="w-full md:w-2/3 lg:w-3/4 bg-brand-white dark:bg-brand-black p-3 md:p-4 rounded-lg shadow-lg border border-brand-mediumGray dark:border-gray-700 min-h-[300px] max-h-[calc(100vh-250px)] overflow-y-auto scrollbar-thin scrollbar-thumb-brand-mediumGray dark:scrollbar-thumb-gray-600">
+                  <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-start">
+                    {/* Main Content Area for Material (Left) */}
+                    <div className="w-full md:w-2/3 lg:w-3/4 bg-brand-white dark:bg-brand-black p-3 md:p-5 rounded-lg shadow-lg border border-brand-mediumGray dark:border-gray-700 h-auto min-h-[250px] max-h-[calc(100vh-220px)] overflow-y-auto scrollbar-thin scrollbar-thumb-brand-mediumGray dark:scrollbar-thumb-gray-600">
                       {displayedModuleForMaterialView ? (
                         <>
-                          <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-brand-orange dark:text-orange-400 mb-3 md:mb-4">{displayedModuleForMaterialView.title}</h2>
-                          {displayedModuleForMaterialView.isLoading && <LoadingSpinner message={`Loading material for ${displayedModuleForMaterialView.title}...`} />}
+                          <h2 className="text-xl sm:text-2xl md:text-2xl font-bold text-brand-orange dark:text-orange-400 mb-3 md:mb-4">{cleanModuleTitle(displayedModuleForMaterialView.title)}</h2>
+                          {displayedModuleForMaterialView.isLoading && <LoadingSpinner message={`Loading material for ${cleanModuleTitle(displayedModuleForMaterialView.title)}...`} />}
                           {!displayedModuleForMaterialView.isLoading && displayedModuleForMaterialView.moduleMaterial && (
                             <>
                               <MemoizedMarkdownRenderer content={displayedModuleForMaterialView.moduleMaterial} baseTextSize={largeTextBase} />
@@ -2290,38 +2497,53 @@ const App: React.FC = () => {
                       )}
                     </div>
                     
-                    {/* Module Sidebar (Now on the Right) */}
-                    <div className="w-full md:w-1/3 lg:w-1/4 flex-shrink-0 bg-brand-lightGray dark:bg-gray-800 p-3 md:p-4 rounded-lg shadow border border-brand-mediumGray dark:border-gray-700 max-h-[70vh] md:max-h-[calc(100vh-250px)] overflow-y-auto scrollbar-thin scrollbar-thumb-brand-mediumGray dark:scrollbar-thumb-gray-600">
-                      <h3 className="text-lg md:text-xl font-semibold text-brand-blue dark:text-blue-300 mb-3 border-b border-brand-mediumGray dark:border-gray-600 pb-2">Modules</h3>
+                    {/* Dynamic Module Sidebar (Right) */}
+                    <div className="w-full md:w-1/3 lg:w-1/4 flex-shrink-0 bg-brand-lightGray dark:bg-gray-800 p-3 md:p-4 rounded-lg shadow border border-brand-mediumGray dark:border-gray-700 h-auto max-h-[calc(100vh-220px)] self-start flex flex-col overflow-y-auto scrollbar-thin scrollbar-thumb-brand-mediumGray dark:scrollbar-thumb-gray-600">
+                      <div className="flex justify-between items-center mb-3 border-b border-brand-mediumGray dark:border-gray-600 pb-2">
+                        <h3 className="text-lg md:text-xl font-semibold text-brand-blue dark:text-blue-300">Modul</h3>
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded bg-brand-blue/10 text-brand-blue dark:bg-blue-900/40 dark:text-blue-300">
+                          {curriculum.modules.filter(m => currentHistoryJourney?.moduleCompletionStatus[m.title]?.summaryLoaded).length}/{curriculum.modules.length} Selesai
+                        </span>
+                      </div>
                       {curriculum.modules.length === 0 ? (
                         <p className="text-sm text-brand-black/70 dark:text-gray-400">No modules for this topic.</p>
                       ) : (
-                        <nav className="space-y-1.5">
-                          {curriculum.modules.map((module, index) => (
-                            <button
-                              key={index}
-                              onClick={() => {
-                                setSelectedMaterialModuleIndex(index);
-                                if (!module.moduleMaterial && !module.isLoading && !module.loadingError) {
-                                  handleLoadModuleDetails(index);
-                                }
-                              }}
-                              className={`w-full text-left p-2.5 rounded-md transition-colors duration-150 flex items-center justify-between
-                                ${selectedMaterialModuleIndex === index 
-                                  ? 'bg-brand-blue text-brand-white shadow-md' 
-                                  : 'bg-brand-white dark:bg-gray-700 hover:bg-brand-mediumGray dark:hover:bg-gray-600 text-brand-black dark:text-gray-200'}`}
-                              aria-current={selectedMaterialModuleIndex === index ? 'page' : undefined}
-                            >
-                              <span className="flex-grow text-sm md:text-base font-medium truncate pr-2">{index + 1}. {module.title}</span>
-                              <span className="flex-shrink-0">
-                                {module.isLoading ? <Icons.LoadingAnimatedIcon className="w-4 h-4 text-current" /> :
-                                 currentHistoryJourney?.moduleCompletionStatus[module.title]?.summaryLoaded ? <Icons.CheckCircle className="w-4 h-4 text-brand-green" /> :
-                                 module.loadingError ? <Icons.XCircle className="w-4 h-4 text-brand-red" /> :
-                                 <span className="w-4 h-4 inline-block"></span> 
-                                }
-                              </span>
-                            </button>
-                          ))}
+                        <nav className="space-y-2">
+                          {curriculum.modules.map((module, index) => {
+                            const isSelected = selectedMaterialModuleIndex === index;
+                            const isCompleted = currentHistoryJourney?.moduleCompletionStatus[module.title]?.summaryLoaded;
+                            const displayTitle = `${index + 1}. ${cleanModuleTitle(module.title)}`;
+                            
+                            return (
+                              <button
+                                key={index}
+                                onClick={() => {
+                                  setSelectedMaterialModuleIndex(index);
+                                  if (!module.moduleMaterial && !module.isLoading && !module.loadingError) {
+                                    handleLoadModuleDetails(index);
+                                  }
+                                }}
+                                title={displayTitle}
+                                className={`w-full text-left p-2.5 sm:p-3 rounded-md transition-all duration-150 flex items-center justify-between border ${
+                                  isSelected 
+                                    ? 'bg-brand-blue text-brand-white border-brand-blue shadow-md' 
+                                    : 'bg-brand-white dark:bg-gray-700 hover:bg-brand-mediumGray dark:hover:bg-gray-600 text-brand-black dark:text-gray-200 border-brand-mediumGray dark:border-gray-600'
+                                }`}
+                                aria-current={isSelected ? 'page' : undefined}
+                              >
+                                <span className="flex-grow text-xs sm:text-sm md:text-base font-medium line-clamp-2 leading-snug break-words pr-2">
+                                  {displayTitle}
+                                </span>
+                                <span className="flex-shrink-0 ml-1">
+                                  {module.isLoading ? <Icons.LoadingAnimatedIcon className="w-4 h-4 text-current animate-spin" /> :
+                                   isCompleted ? <Icons.CheckCircle className="w-4 h-4 text-brand-green" /> :
+                                   module.loadingError ? <Icons.XCircle className="w-4 h-4 text-brand-red" /> :
+                                   <span className="w-4 h-4 inline-block opacity-30">○</span> 
+                                  }
+                                </span>
+                              </button>
+                            );
+                          })}
                         </nav>
                       )}
                     </div>
@@ -2729,33 +2951,106 @@ const App: React.FC = () => {
 
 
             {activeTab === 'plan' && sevenDayPlan && ( 
-              <div className="space-y-2 md:space-y-3">
-                 <h3 className={`${heading2Size} font-semibold text-brand-blue dark:text-blue-300 mb-2 md:mb-3`}>7-Day Accelerated Learning Plan</h3> 
-                {sevenDayPlan.days.map((day: DailyPlan) => ( 
-                  <Accordion 
-                    key={day.day} 
-                    title={<span className="font-semibold text-md md:text-lg text-brand-blue dark:text-blue-300 whitespace-normal">{`Day ${day.day}: ${day.summaryFocus}`}</span>}
-                  >
-                    <div className="flex items-start mb-2 md:mb-3">
-                        <input 
-                            type="checkbox"
-                            id={`plan-task-${day.day}`}
-                            className="mt-1 h-4 w-4 md:h-5 md:w-5 text-brand-blue dark:accent-blue-500 bg-brand-white dark:bg-gray-700 border-brand-mediumGray dark:border-gray-600 rounded focus:ring-brand-blue dark:focus:ring-blue-500 cursor-pointer"
-                            checked={currentHistoryJourney?.planTaskCompletionStatus[day.day] || false}
-                            onChange={() => handleTogglePlanTask(day.day)}
-                            disabled={!selectedHistoryItemId}
-                            aria-labelledby={`plan-task-label-${day.day}`}
-                        />
-                        <label id={`plan-task-label-${day.day}`} htmlFor={`plan-task-${day.day}`} className={`ml-2 md:ml-3 flex-grow text-lg md:text-2xl font-semibold text-brand-orange dark:text-orange-400 mb-1 md:mb-2 cursor-pointer`}>
-                            Mark Day {day.day} Task as Complete
-                        </label>
-                    </div>
-                    <h4 className={`text-lg md:text-2xl font-semibold text-brand-orange dark:text-orange-400 mb-1 md:mb-2 flex items-center`}>Task:</h4>
-                    <MemoizedMarkdownRenderer content={formatSevenDayTask(day.task)} baseTextSize={largeTextBase} />
-                     <h4 className={`text-lg md:text-2xl font-semibold text-brand-orange dark:text-orange-400 mb-1 md:mb-2 flex items-center`}>Summary Focus:</h4>
-                    <p className={`mb-2 md:mb-4 whitespace-pre-wrap ${largeTextBase} dark:text-gray-200`}>{day.summaryFocus}</p>
-                  </Accordion>
-                ))}
+              <div className="space-y-4">
+                 <div className="flex flex-col sm:flex-row justify-between sm:items-center pb-2 border-b border-brand-mediumGray dark:border-gray-700">
+                   <h3 className={`${heading2Size} font-semibold text-brand-blue dark:text-blue-300 mb-1 sm:mb-0`}>7-Day Accelerated Learning Plan</h3> 
+                   <span className="text-xs md:text-sm font-medium text-brand-orange dark:text-orange-400 bg-brand-orange/10 dark:bg-orange-950/40 px-3 py-1 rounded-full w-max">7 Modul Terjadwal</span>
+                 </div>
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+                  {sevenDayPlan.days.map((day: DailyPlan) => {
+                    const subtasks = parseSubtasks(day.task);
+                    const totalSubtasksCount = subtasks.length;
+                    const subtaskCompletion = currentHistoryJourney?.planSubtaskCompletionStatus || {};
+
+                    const completedSubtasksCount = subtasks.reduce((acc, _, idx) => {
+                      const key = `${day.day}_${idx}`;
+                      const isChecked = key in subtaskCompletion
+                        ? subtaskCompletion[key]
+                        : (currentHistoryJourney?.planTaskCompletionStatus[day.day] || false);
+                      return acc + (isChecked ? 1 : 0);
+                    }, 0);
+
+                    const isCompleted = totalSubtasksCount > 0
+                      ? completedSubtasksCount === totalSubtasksCount
+                      : (currentHistoryJourney?.planTaskCompletionStatus[day.day] || false);
+
+                    const cleanedFocusTitle = cleanModuleTitle(day.summaryFocus);
+                    
+                    return ( 
+                      <div 
+                        key={day.day} 
+                        className={`p-3.5 sm:p-4 rounded-lg border transition-all duration-200 flex flex-col justify-between shadow-sm hover:shadow-md ${
+                          isCompleted 
+                            ? 'bg-brand-green/5 dark:bg-green-950/20 border-brand-green/40 dark:border-green-800' 
+                            : 'bg-brand-white dark:bg-gray-800 border-brand-mediumGray dark:border-gray-700'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-2 pb-2 border-b border-brand-mediumGray/60 dark:border-gray-700/60 flex-wrap gap-1.5">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-xs font-bold px-2 py-0.5 rounded bg-brand-blue text-brand-white">Hari {day.day}</span>
+                              {totalSubtasksCount > 0 && (
+                                <span className="text-[11px] font-semibold text-brand-blue/80 dark:text-blue-300/80 bg-brand-blue/10 dark:bg-blue-900/30 px-2 py-0.5 rounded-full">
+                                  {completedSubtasksCount}/{totalSubtasksCount} Subtugas
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => handleTogglePlanTask(day.day, totalSubtasksCount)}
+                              disabled={!selectedHistoryItemId}
+                              className={`flex items-center space-x-1 text-xs font-semibold px-2 py-1 rounded transition-colors ${
+                                isCompleted 
+                                  ? 'bg-brand-green text-brand-white' 
+                                  : 'bg-brand-lightGray dark:bg-gray-700 text-brand-black dark:text-gray-200 hover:bg-brand-mediumGray dark:hover:bg-gray-600'
+                              }`}
+                            >
+                              {isCompleted ? <><Icons.CheckCircle className="w-3.5 h-3.5 inline mr-1" />Selesai</> : 'Tandai Selesai'}
+                            </button>
+                          </div>
+                          <h4 className="font-semibold text-sm md:text-base text-brand-blue dark:text-blue-300 mb-2 line-clamp-2 leading-snug break-words" title={cleanedFocusTitle}>
+                            {cleanedFocusTitle}
+                          </h4>
+                          {subtasks.length > 0 ? (
+                            <div className="space-y-2 mt-2">
+                              {subtasks.map((subtaskText, sIdx) => {
+                                const key = `${day.day}_${sIdx}`;
+                                const isSubtaskChecked = key in subtaskCompletion
+                                  ? subtaskCompletion[key]
+                                  : (currentHistoryJourney?.planTaskCompletionStatus[day.day] || false);
+
+                                return (
+                                  <label
+                                    key={sIdx}
+                                    className={`flex items-start space-x-2.5 p-2 rounded-md transition-colors cursor-pointer text-xs md:text-sm ${
+                                      isSubtaskChecked
+                                        ? 'bg-brand-green/10 dark:bg-green-900/20 text-brand-black/70 dark:text-gray-400 line-through'
+                                        : 'bg-brand-lightGray/60 dark:bg-gray-700/50 hover:bg-brand-mediumGray/40 dark:hover:bg-gray-700 text-brand-black dark:text-gray-200'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSubtaskChecked}
+                                      disabled={!selectedHistoryItemId}
+                                      onChange={() => handleTogglePlanSubtask(day.day, sIdx, totalSubtasksCount)}
+                                      className="mt-0.5 h-4 w-4 rounded border-brand-mediumGray text-brand-green focus:ring-brand-green dark:bg-gray-800 dark:border-gray-600 cursor-pointer accent-emerald-600"
+                                    />
+                                    <div className="flex-1 select-none leading-normal">
+                                      <MemoizedMarkdownRenderer content={subtaskText} baseTextSize="text-xs md:text-sm" />
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="text-xs md:text-sm text-brand-black/80 dark:text-gray-300">
+                              <MemoizedMarkdownRenderer content={formatSevenDayTask(day.task)} baseTextSize="text-xs md:text-sm" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
             
@@ -2872,7 +3167,7 @@ const App: React.FC = () => {
   };
 
   const renderFlashcardInterface = () => {
-    const heading2Size = "text-2xl sm:text-3xl md:text-4xl text-brand-blue dark:text-blue-300";
+    const heading2Size = "text-xl sm:text-2xl md:text-2xl font-semibold text-brand-blue dark:text-blue-300";
     const largeTextBase = "text-lg md:text-xl text-brand-black dark:text-gray-200"; 
 
     if (!activeFlashcardModuleInfo) {

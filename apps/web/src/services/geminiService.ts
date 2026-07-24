@@ -32,20 +32,16 @@ export const getAiClient = (actionName = 'default') => {
 
 const ai = getAiClient('default');
 
-// Model Constants — all routes go through gemini-3.5-flash.
-// Pro tier is intentionally not used: the current API key has zero quota
-// for gemini-2.5-pro and gemini-3.1-pro-preview (HTTP 429 limit: 0).
-// Once billing / a Pro-enabled key is available, the pro entries below
-// can be split out again.
-const MODEL_CURRICULUM_OUTLINE = 'gemini-3.5-flash';
-const MODEL_MODULE_SUMMARY = 'gemini-3.5-flash';
-const MODEL_SEVEN_DAY_PLAN = 'gemini-3.5-flash';
-const MODEL_QUIZ_GENERATION = 'gemini-3.5-flash';
-const MODEL_QUIZ_EXPLANATION = 'gemini-3.5-flash';
-const MODEL_EXAM_QUESTIONS = 'gemini-3.5-flash';
-const MODEL_FLASHCARDS = 'gemini-3.5-flash';
-const MODEL_RESOURCES = 'gemini-3.5-flash';
-const MODEL_CHAT = 'gemini-3.5-flash';
+// Model Constants — using stable gemini-2.5-flash model.
+const MODEL_CURRICULUM_OUTLINE = 'gemini-2.5-flash';
+const MODEL_MODULE_SUMMARY = 'gemini-2.5-flash';
+const MODEL_SEVEN_DAY_PLAN = 'gemini-2.5-flash';
+const MODEL_QUIZ_GENERATION = 'gemini-2.5-flash';
+const MODEL_QUIZ_EXPLANATION = 'gemini-2.5-flash';
+const MODEL_EXAM_QUESTIONS = 'gemini-2.5-flash';
+const MODEL_FLASHCARDS = 'gemini-2.5-flash';
+const MODEL_RESOURCES = 'gemini-2.5-flash';
+const MODEL_CHAT = 'gemini-2.5-flash';
 
 
 const MAX_RETRIES = 3;
@@ -102,6 +98,43 @@ const callWithRetries = async <T,>(apiCallFn: () => Promise<T>, callName: string
   // This line should theoretically be unreachable due to the throw in the catch block,
   // but it's here to satisfy TypeScript's path checking if MAX_RETRIES could be 0.
   throw new Error(`API call "${callName}" failed definitively after ${MAX_RETRIES} attempts.`);
+};
+
+export const cleanAiOutput = (text: string): string => {
+  if (!text) return text;
+  let cleaned = text;
+  // Replace em dashes (— / – / --) with a comma or a period
+  cleaned = cleaned.replace(/\s*[\u2014\u2013]\s*/g, ', ');
+  cleaned = cleaned.replace(/\s+--\s+/g, ', ');
+
+  // Strip all emoji pictograms
+  cleaned = cleaned.replace(/\p{Extended_Pictographic}/gu, '');
+
+  // Clean raw bold/italic asterisks while keeping markdown structure
+  cleaned = cleaned.replace(/\*\*\*(.*?)\*\*\*/g, '$1');
+  cleaned = cleaned.replace(/\*\*(.*?)\*\*/g, '$1');
+  cleaned = cleaned.replace(/(^|\s)\*(?!\s|\*)(.+?)(?<!\s|\*)\*(?=\s|$)/g, '$1$2');
+  cleaned = cleaned.replace(/\*\*/g, '');
+
+  return cleaned.trim();
+};
+
+// Recursive helper to clean strings in parsed JSON objects
+const cleanParsedObject = <T,>(obj: T): T => {
+  if (typeof obj === 'string') {
+    return cleanAiOutput(obj) as unknown as T;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(cleanParsedObject) as unknown as T;
+  }
+  if (obj && typeof obj === 'object') {
+    const cleanedObj: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      cleanedObj[key] = cleanParsedObject(value);
+    }
+    return cleanedObj as unknown as T;
+  }
+  return obj;
 };
 
 const sanitizeJsonString = (str: string): string => {
@@ -164,14 +197,14 @@ const parseGeminiJsonResponse = <T,>(responseText?: string): T | null => {
 
   // Attempt 1: Direct or sanitized parse on full text
   let parsed = tryParseCandidate<T>(originalTrimmedStr);
-  if (parsed) return parsed;
+  if (parsed) return cleanParsedObject(parsed);
 
   // Attempt 2: Extract content from markdown fences (```json ... ``` or ``` ... ```)
   const fenceRegex = /```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/;
   const match = originalTrimmedStr.match(fenceRegex);
   if (match && match[1]) {
     parsed = tryParseCandidate<T>(match[1].trim());
-    if (parsed) return parsed;
+    if (parsed) return cleanParsedObject(parsed);
   }
 
   // Attempt 3: Spreadsheet prefix removal
@@ -182,7 +215,7 @@ const parseGeminiJsonResponse = <T,>(responseText?: string): T | null => {
       spreadsheetCleanedStr = spreadsheetCleanedStr.substring(0, spreadsheetCleanedStr.length - 3);
     }
     parsed = tryParseCandidate<T>(spreadsheetCleanedStr.trim());
-    if (parsed) return parsed;
+    if (parsed) return cleanParsedObject(parsed);
   }
 
   // Attempt 4: Extract JSON object substring { ... }
@@ -192,7 +225,7 @@ const parseGeminiJsonResponse = <T,>(responseText?: string): T | null => {
     if (firstBrace !== -1 && lastBrace > firstBrace) {
       const potentialObjectJson = originalTrimmedStr.substring(firstBrace, lastBrace + 1);
       parsed = tryParseCandidate<T>(potentialObjectJson);
-      if (parsed) return parsed;
+      if (parsed) return cleanParsedObject(parsed);
     }
   }
 
@@ -203,7 +236,7 @@ const parseGeminiJsonResponse = <T,>(responseText?: string): T | null => {
     if (firstBracket !== -1 && lastBracket > firstBracket) {
       const potentialArrayJson = originalTrimmedStr.substring(firstBracket, lastBracket + 1);
       parsed = tryParseCandidate<T>(potentialArrayJson);
-      if (parsed) return parsed;
+      if (parsed) return cleanParsedObject(parsed);
     }
   }
 
@@ -211,61 +244,101 @@ const parseGeminiJsonResponse = <T,>(responseText?: string): T | null => {
   return null;
 };
 
+export const cleanModuleTitle = (title: string): string => {
+  if (!title) return "";
+  let cleaned = title.trim();
+  // First strip surrounding quotes or markdown asterisks
+  cleaned = cleaned.replace(/^["'*]+|["'*]+$/g, '').trim();
+  // Strip redundant raw prefixes like "Modul 1:", "Module 1:", "1. ", "Day 1:" ONLY if followed by remaining title text
+  const match = cleaned.match(/^(?:modul|module|day|hari)\s*\d+[\s.:-]+\s*(.+)/i) || cleaned.match(/^\d+[\s.:-]+\s*(.+)/i);
+  if (match && match[1] && match[1].trim()) {
+    cleaned = match[1].trim();
+  }
+  cleaned = cleaned.replace(/^["'*]+|["'*]+$/g, '').trim();
+  cleaned = cleaned.replace(/\s*[:;-]+$/, '');
+  return cleanAiOutput(cleaned);
+};
+
 export const generateInitialCurriculumOutline = async (
   topic: string, 
   targetLanguage?: string
 ): Promise<Curriculum | null> => {
+  const isIndonesian = Boolean(targetLanguage && (
+    targetLanguage.toLowerCase().includes("indonesia") || 
+    targetLanguage.toLowerCase().includes("indonesian")
+  ));
+  const isEnglish = !targetLanguage || targetLanguage.toLowerCase() === "english";
+  const langName = targetLanguage && targetLanguage.trim() !== "" ? targetLanguage : "English";
+
   let languageInstruction = "";
-  if (targetLanguage && targetLanguage.toLowerCase() !== "english") { 
+  let syllabusHeadersExample = "";
+
+  if (isIndonesian) {
     languageInstruction = `
-    The entire syllabus content and module titles should be primarily in ${targetLanguage}. 
-    If the topic itself is about learning ${targetLanguage}, then the curriculum outline should be for a beginner in ${targetLanguage}.
-    If the topic is something else (e.g. "Quantum Physics") and the target language is ${targetLanguage}, then provide the syllabus and module titles for "Quantum Physics" in ${targetLanguage}.
+    Seluruh isi silabus dan judul modul HARUS dalam Bahasa Indonesia yang alami, ramah, dan profesional.
+    Gunakan "kamu" untuk menyapa pembelajar secara ramah.
+    JANGAN menerjemahkan istilah teknis universal secara kaku jika istilah aslinya lebih umum digunakan di industri/akademik.
     `;
-  } else if (targetLanguage) { 
-     languageInstruction = `Ensure the syllabus and module titles are in English.`;
+    syllabusHeadersExample = `
+        *   **Identitas Materi**
+            *   Nama Mata Topik: ${topic}
+            *   Jumlah Jam Pelajaran: (Contoh: 7 Jam Pelajaran (@ 60 menit/modul))
+        *   **Deskripsi Mata Pelajaran/Kuliah**
+            *   Gambaran Umum Materi: ...
+            *   Relevansi Mata Pelajaran/Kuliah: ...
+            *   Manfaat yang Diharapkan: ...
+        *   **Capaian Pembelajaran**
+        *   **Bahan Kajian/Materi Pokok**
+        *   **Metode Pembelajaran**
+    `;
+  } else if (!isEnglish) {
+    languageInstruction = `
+    The entire syllabus content and module titles MUST be primarily in ${langName}.
+    Ensure titles and content are fluent, natural, and accurate for native learners of ${langName}.
+    `;
+    syllabusHeadersExample = `
+        *   **Course Identity**
+            *   Topic Name: ${topic}
+            *   Estimated Learning Duration: (e.g. 7 Lessons (@ 60 mins/module))
+        *   **Course Description**
+            *   Overview: ...
+            *   Relevance: ...
+            *   Expected Benefits: ...
+        *   **Learning Outcomes**
+        *   **Core Topics / Subjects**
+        *   **Learning Methods**
+    `;
+  } else {
+    languageInstruction = `Ensure the syllabus and module titles are in English.`;
+    syllabusHeadersExample = `
+        *   **Course Identity**
+            *   Topic Name: ${topic}
+            *   Estimated Learning Duration: (e.g. 7 Lessons (@ 60 mins/module))
+        *   **Course Description**
+            *   Overview: ...
+            *   Relevance: ...
+            *   Expected Benefits: ...
+        *   **Learning Outcomes**
+        *   **Core Topics / Subjects**
+        *   **Learning Methods**
+    `;
   }
 
   const prompt = `
-    You are a professor creating a detailed curriculum syllabus.
-    For the topic: "${topic}".
+    You are a distinguished university professor creating a detailed curriculum syllabus for: "${topic}".
     ${languageInstruction}
     
     The output JSON should contain:
-    1.  'syllabus': Start with Introductory A comprehensive syllabus.
-    This MUST include the following sections, formatted with Markdown (e.g., ## Heading, Bullet points item):
-        *   **Identitas Materi**
-            *   Nama Mata Topik: ${topic}
-            *   Jumlah Jam Pelajaran: (Calculate this based on the number of 'moduleTitles' you generate. Assume 1 module = 1 Jam Pelajaran (approx. 60 minutes). For example, if you generate 7 module titles, state "7 Jam Pelajaran per Minggu (@ 60 menit/modul)".)
-        *   **Deskripsi Mata Pelajaran/Kuliah**
-            *   Gambaran Umum Materi: (Provide a general overview of the topic.)
-            *   Relevansi Mata Pelajaran/Kuliah: (Explain the relevance of studying this topic.)
-            *   Manfaat yang Diharapkan: (List the expected benefits for the learner.)
-        *   **Capaian Pembelajaran:**
-        *   **Bahan Kajian/Materi Pokok**
-            *   (List the 7 main topics or subjects that will be covered within this curriculum.)
-        *   **Metode Pembelajaran**
-            *   Modul Material
-            *   Quiz
-            *   Flashcards
-            *   Tutor
-            *   Exam
-        *   A concluding paragraph for the syllabus.
-    2.  'moduleTitles': A list of module titles. Each string in the 'moduleTitles' array must be a non-empty, meaningful title.
-        - The number of module titles should be appropriate for the complexity and breadth of the topic, aiming for a comprehensive learning journey that could reasonably be introduced over 7 days of focused study (typically 5-10 modules). For example, a topic might have 7 modules for a 7-day plan, covering core aspects each day.
+    1. 'syllabus': A comprehensive syllabus formatted with standard Markdown headings and lists:
+    ${syllabusHeadersExample}
+    2. 'moduleTitles': A list of module titles (typically 5-10 modules for a structured study journey).
+       CRITICAL RULE FOR 'moduleTitles': Do NOT prefix titles with "Module 1:", "Modul 1:", or numbers. Provide only clean, descriptive, engaging titles directly in ${langName} (e.g. ["Pengenalan Dasar Sistem", "Teori Dasar dan Aplikasi"]).
 
-    CONTENT GUIDELINES for 'syllabus' and 'moduleTitles':
-    - Text Formatting: Do NOT use raw '*' or '#' characters for bolding, italics, or any decorative emphasis within the 'syllabus' or 'moduleTitles' strings, UNLESS it's for standard Markdown structural elements like headings (e.g., ##) or list items (e.g., - item). All other emphasis should be achieved through phrasing or context if necessary.
-    - Line Breaks: Avoid unnecessary blank lines. Content should be compact and flow naturally.
-    - Language Persona: If ${targetLanguage} is Bahasa Indonesia, use "kamu" instead of "Anda" for subjective address.
-    - Don't halusinate, jjust stick into this prompt.
-
-    Respond STRICTLY with a JSON object in the following format:
+    Respond STRICTLY with a single, valid JSON object in the following format:
     {
-      "syllabus": "## Identitas Materi\\n- Nama Mata Topik: ${topic}\\n- Jumlah SKS/Jam Pelajaran: [AI to fill based on number of modules generated, e.g., 7 SKS (7 Jam Pelajaran)]\\n\\n## Deskripsi Mata Pelajaran/Kuliah\\n- Gambaran Umum Materi: ...\\n- Relevansi Mata Pelajaran/Kuliah: ...\\n- Manfaat yang Diharapkan: ...\\n- Capaian Pembelajaran: \\n  - Outcome 1\\n  - Outcome 2\\n\\n## Bahan Kajian/Materi Pokok\\n- Topic 1\\n- Topic 2\\n\\n## Metode Pembelajaran\\n- Modul Material\\n- Quiz\\n- Exam\\n- Flashcards\\n- Tutor\\n\\n[Any other general syllabus text, formatted with Markdown as needed, following all guidelines.]",
-      "moduleTitles": ["Module 1 Title", "Module 2 Title", "... (etc, as appropriate)"]
+      "syllabus": "Markdown formatted syllabus string...",
+      "moduleTitles": ["Title 1", "Title 2", "..."]
     }
-    The entire response MUST be a single, valid JSON object. Do not include any text, explanations, or characters outside of this JSON object structure. Ensure all strings within the JSON are correctly quoted and escaped.
   `;
   
   try {
@@ -283,7 +356,7 @@ export const generateInitialCurriculumOutline = async (
     if (parsedData && parsedData.moduleTitles && parsedData.syllabus) {
       const originalTitlesCount = parsedData.moduleTitles.length;
       const validModules: CurriculumModule[] = parsedData.moduleTitles
-        .map(title => typeof title === 'string' ? title.trim() : "") 
+        .map(title => typeof title === 'string' ? cleanModuleTitle(title) : "") 
         .filter(title => title !== "") 
         .map(title => ({ title, moduleMaterial: undefined, isLoading: false, loadingError: null }));
 
@@ -345,8 +418,7 @@ Create detailed learning material, structured as a comprehensive textbook chapte
 
 **Required Structure (use exact Markdown formatting):**
 
-# [Creative, Engaging Title for ${moduleTitle}]
-*Use relevant emoji and make title inviting and specific to the module*
+# [Clean, Engaging Title for ${moduleTitle}]
 
 ## Provide clear context within ${overallTopic}. This is the main content section - make it comprehensive. The section should consist of:
 - Explain why this knowledge matters (in paragraph)
@@ -360,26 +432,16 @@ Create detailed learning material, structured as a comprehensive textbook chapte
 - Conclusion (in paragraph)
 
 **Formatting Standards:**
-- **Bold** for key terms and important concepts (use Markdown syntax: **text**)
-- *Italics* for emphasis and definitions (use Markdown syntax: *text*)
-- ***Bold Italic*** = ***text***
-- Use bullet points (- item) and numbered lists (1. item) appropriately.
-- Write in clear, engaging paragraphs.
-- If target language is Bahasa Indonesia, replace "Anda" with "kamu".
-- Ensure proper Markdown syntax throughout.
-- For mathematical topics, use Unicode symbols where appropriate: ÷ × ± √ ² ³ π ∞ ≤ ≥ ≠ ∑ ∏.
-
-Rich format implementation:
-**Bold Text** = **text**
-*Italic Text* = *text***
-***Bold Italic*** = ***text***
-- Unordered List = - item
-  - Nested List =   - item (with 2 spaces indent)
-    - Deep Nested =     - item (with 4 spaces indent)
+- ABSOLUTELY NO EMOJIS. Do NOT use any emojis or pictographs anywhere in titles, headings, or content.
+- ABSOLUTELY NO ASTERISKS ('*'). Do NOT use double asterisks (**text**) or single asterisks (*text*) for bolding or italics. Express emphasis through clear phrasing and context alone. Paragraphs MUST be plain text.
+- Use Markdown's structural elements (like '#', '##', '###' for headings, and '-' for lists) ONLY for their intended structural purpose.
+- Write in clear, engaging, professional text.
+- If target language is Bahasa Indonesia, use "kamu" to address the learner.
+- Do NOT use em dashes ('—' or '--'). Instead, use a comma or a period as an alternative.
+- For mathematical expressions, formulas, and calculations, use standard LaTeX syntax (e.g. $inline$ or $$display$$).
 
 **Exclusions:**
 - Do NOT include: assignments, reading lists, projects, or interaction suggestions.
-- No #### Heading 4 (Sub-subsection)
 - Don't give the output in table format.
 
 **Output Format:**
@@ -444,7 +506,7 @@ export const generateSevenDayPlan = async (
      languageInstruction = `Ensure all content is in English.`;
   }
 
-  const moduleTitlesListString = moduleTitles.map((title, index) => `Module ${index + 1}: "${title}"`).join('\n');
+  const moduleTitlesListString = moduleTitles.map((title, index) => `${index + 1}. "${cleanModuleTitle(title)}"`).join('\n');
   
   const prompt = `
     Create a step-by-step 7-day accelerated learning program for the topic: "${topic}".
@@ -458,6 +520,7 @@ export const generateSevenDayPlan = async (
 
     If there are more than 7 modules, focus the 7-day plan on the first 7 modules.
     If there are fewer than 7 modules, distribute the focus of these modules across the 7 days, perhaps dedicating more than one day to more complex modules or allowing for review/project days. Ensure each day still has a clear focus drawn from these module titles. The 'summaryFocus' for each day should directly reflect the title of the module(s) it is primarily covering.
+    Do NOT prefix 'summaryFocus' with "Module 1:" or "Modul 1:".
 
     Assume the user is a complete beginner.
     The program should use active recall, spaced repetition, and real-world practice.
@@ -472,37 +535,25 @@ export const generateSevenDayPlan = async (
 
     For each day, provide:
     - day: The day number (1-7).
-    - task: The main learning task for the day. This task description MUST be formatted as a Markdown bulleted list (e.g., starting lines with "- "). Each bullet point should represent a distinct sub-task or activity for the day. These sub-tasks should collectively incorporate diverse learning activities (e.g., "- Watch a 10-min video on X (visual/audio)\\n- Create a mind map of key concepts (visual/text)\\n- Attempt practice problems 1-3 (hands-on/examples)."). Ensure tasks are concise enough for a daily plan but cover key aspects from the syllabus context suitable for that day.
-    - summaryFocus: This MUST be the title of the module (or modules, if combined) that the day's tasks are primarily focused on. Take this directly from the provided "Available Module Titles".
+    - task: The main learning task for the day formatted as a Markdown bulleted list.
+    - summaryFocus: The clean title of the module(s) that the day's tasks cover.
 
     CONTENT GUIDELINES:
-    - Text Formatting: Do NOT use raw '*' or '#' characters for bolding, italics, or any decorative emphasis within the 'task' or 'summaryFocus' strings, other than for actual Markdown list markers.
+    - Text Formatting: Do NOT use raw '*' or '#' characters for bolding, italics, or any decorative emphasis.
     - Markdown Usage: For the 'task' field, use Markdown's standard list items (starting with '-').
-    - Plain Text: The 'summaryFocus' should be plain text.
-    - Line Breaks: Avoid unnecessary blank lines. Content should be compact and flow naturally.
-    - Emphasis: For any emphasis, use phrasing or context, not symbols.
-
-    The entire response MUST be a single, valid JSON object. Do not include any text, explanations, or characters outside of this JSON object structure.
-    **CRITICAL JSON RULE:** All string values inside the JSON MUST be valid. This means any double quote character (") within a string must be escaped with a backslash (like this: \\"). For example, if a task is "Read the chapter titled \\"Introduction\\"", it must be formatted that way in the JSON. This is the most common reason for parsing failure. Ensure all quotes are escaped.
-
-    Respond STRICTLY with a JSON object in the following format:
+    - Plain Text: The 'summaryFocus' should be plain text without prefixes.
+    - Do NOT use em dashes ('—' or '--'). Instead, use a comma or a period as an alternative.
+    
+    Respond STRICTLY with a single, valid JSON object in the following format:
     {
       "days": [
         {
           "day": 1,
-          "task": "- Sub-task 1 for the day, incorporating diverse learning suggestions related to Module 1's title.\\n- Sub-task 2 for the day...",
-          "summaryFocus": "Module 1 Title (taken from the provided list)"
-        },
-        {
-          "day": 2,
-          "task": "- Sub-task 1 for the day, related to Module 2's title.\\n- Sub-task 2 for the day...",
-          "summaryFocus": "Module 2 Title (taken from the provided list)"
-        } 
-        // ... up to day 7, adapting based on the number of module titles.
+          "task": "- Sub-task 1 for the day...\\n- Sub-task 2...",
+          "summaryFocus": "Clean Title of Module 1"
+        }
       ]
     }
-    Ensure the output is an array of 7 daily plans. The 'task' field must be a string containing Markdown bullet points.
-    The 'summaryFocus' must be derived directly from the provided module titles.
   `;
 
   try {
@@ -517,8 +568,12 @@ export const generateSevenDayPlan = async (
     const rawResponseText = response.text;
     const parsedData = parseGeminiJsonResponse<GeminiSevenDayPlanResponse>(rawResponseText);
 
-     if (parsedData && parsedData.days && parsedData.days.length === 7) { 
-      return { days: parsedData.days, topic };
+    if (parsedData && parsedData.days && parsedData.days.length === 7) { 
+      const cleanedDays = parsedData.days.map(d => ({
+        ...d,
+        summaryFocus: cleanModuleTitle(d.summaryFocus)
+      }));
+      return { days: cleanedDays, topic };
     }
     console.error("Failed to parse 7-day plan data from Gemini or plan is not 7 days. Full response text that failed parsing:", rawResponseText);
     return null;
@@ -902,7 +957,7 @@ export const sendMessageToTutorStream = async (
     const responseStream = await chat.sendMessageStream({ message });
     for await (const chunk of responseStream) {
       if (chunk.text) {
-        onChunk(chunk.text);
+        onChunk(cleanAiOutput(chunk.text));
       }
     }
   } catch (error) {
