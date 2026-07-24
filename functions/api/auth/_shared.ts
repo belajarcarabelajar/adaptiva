@@ -343,11 +343,15 @@ export function isEmailAllowed(env: Env, email: string): boolean {
 
 // --- Response helpers ---
 
-export function jsonResponse(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json", ...extraHeaders },
+export function jsonResponse(request: Request, body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
+  const origin = request.headers.get("origin") || "*";
+  const headers = new Headers({
+    "content-type": "application/json",
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Credentials": "true",
+    ...extraHeaders,
   });
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
 export function redirectResponse(location: string, status = 302, extraHeaders: Record<string, string> = {}): Response {

@@ -111,15 +111,39 @@ async function proxyRequest(request: Request, env: Env, params: PagesContext["pa
   });
 }
 
+function corsHeaders(request: Request, extra: Record<string, string> = {}): Headers {
+  const headers = new Headers(extra);
+  const origin = request.headers.get("origin") || "*";
+  headers.set("Access-Control-Allow-Origin", origin);
+  headers.set("Access-Control-Allow-Credentials", "true");
+  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, x-adaptiva-action, x-goog-api-key");
+  headers.set("Access-Control-Expose-Headers", "x-adaptiva-points");
+  return headers;
+}
+
 // Handle every method on the wildcard path: GET, POST, OPTIONS, etc.
 export const onRequest: PagesFunction<Env> = async (context) => {
+  if (context.request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders(context.request),
+    });
+  }
+
   try {
-    return await proxyRequest(context.request, context.env, context.params);
+    const res = await proxyRequest(context.request, context.env, context.params);
+    const headers = corsHeaders(context.request, Object.fromEntries(res.headers.entries()));
+    return new Response(res.body, {
+      status: res.status,
+      headers,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const headers = corsHeaders(context.request, { "content-type": "application/json" });
     return new Response(
       JSON.stringify({ error: "Proxy error", detail: message }),
-      { status: 502, headers: { "content-type": "application/json" } }
+      { status: 502, headers }
     );
   }
 };

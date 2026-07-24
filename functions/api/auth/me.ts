@@ -10,13 +10,26 @@ import {
   type PagesFunction,
 } from "./_shared";
 
+export const onRequestOptions: PagesFunction<Env> = async (context) => {
+  const origin = context.request.headers.get("origin") || "*";
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Credentials": "true",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
+};
+
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const { env, request } = context;
   const session = await getSession(request, env);
   if (!session) {
-    return jsonResponse({ error: "not_authenticated" }, 401);
+    return jsonResponse(request, { error: "not_authenticated" }, 401);
   }
-  return jsonResponse({
+  return jsonResponse(request, {
     user: {
       id: session.userId,
       email: session.email,
