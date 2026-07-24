@@ -38,12 +38,13 @@ interface Env {
 
 const UPSTREAM_BASE_DEFAULT = "https://generativelanguage.googleapis.com";
 
-const ACTION_POINT_COSTS: Record<string, number> = {
-  chat: 2,
-  generate_quiz: 5,
-  generate_flashcards: 5,
-  generate_summary: 3,
-  generate_study_plan: 5,
+export const ACTION_POINT_COSTS: Record<string, number> = {
+  curriculum: 20,
+  module: 5,
+  quiz: 10,
+  exam: 15,
+  flashcard: 5,
+  tutor: 2,
   default: 5,
 };
 

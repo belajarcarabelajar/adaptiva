@@ -33,15 +33,15 @@ describe('parseSubtasks', () => {
     ]);
   });
 
-  it('handles mixed list styles and empty lines', () => {
+  it('handles mixed list styles, chained markers, and category prefix bolding', () => {
     const markdown = `
     - Visual: Watch video tutorial
 
-    1. Read article
+    1. - Read article
     * Practice exercise
     `;
     expect(parseSubtasks(markdown)).toEqual([
-      'Visual: Watch video tutorial',
+      '**Visual:** Watch video tutorial',
       'Read article',
       'Practice exercise'
     ]);

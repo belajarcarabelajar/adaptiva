@@ -2208,17 +2208,8 @@ const App: React.FC = () => {
     if (!taskContent) return "";
     return taskContent
       .split('\n')
-      .filter(line => line.trim() !== '') 
-      .map(line => {
-        const trimmedLine = line.trim();
-        const numberedListRegex = /^\d+\.\s+/;
-        if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
-          return `✅ ${trimmedLine.substring(2)}`;
-        } else if (numberedListRegex.test(trimmedLine)) {
-          return `✅ ${trimmedLine}`; 
-        }
-        return line; 
-      })
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
       .join('\n');
   };
 
@@ -3023,7 +3014,7 @@ const App: React.FC = () => {
                                     key={sIdx}
                                     className={`flex items-start space-x-2.5 p-2 rounded-md transition-colors cursor-pointer text-xs md:text-sm ${
                                       isSubtaskChecked
-                                        ? 'bg-brand-green/10 dark:bg-green-900/20 text-brand-black/70 dark:text-gray-400 line-through'
+                                        ? 'bg-brand-green/10 dark:bg-green-900/20 text-brand-black/70 dark:text-gray-400'
                                         : 'bg-brand-lightGray/60 dark:bg-gray-700/50 hover:bg-brand-mediumGray/40 dark:hover:bg-gray-700 text-brand-black dark:text-gray-200'
                                     }`}
                                   >
@@ -3032,10 +3023,10 @@ const App: React.FC = () => {
                                       checked={isSubtaskChecked}
                                       disabled={!selectedHistoryItemId}
                                       onChange={() => handleTogglePlanSubtask(day.day, sIdx, totalSubtasksCount)}
-                                      className="mt-0.5 h-4 w-4 rounded border-brand-mediumGray text-brand-green focus:ring-brand-green dark:bg-gray-800 dark:border-gray-600 cursor-pointer accent-emerald-600"
+                                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-brand-mediumGray text-brand-green focus:ring-brand-green dark:bg-gray-800 dark:border-gray-600 cursor-pointer accent-emerald-600"
                                     />
-                                    <div className="flex-1 select-none leading-normal">
-                                      <MemoizedMarkdownRenderer content={subtaskText} baseTextSize="text-xs md:text-sm" />
+                                    <div className={`flex-1 select-none leading-snug min-w-0 ${isSubtaskChecked ? 'line-through opacity-70' : ''}`}>
+                                      <MemoizedMarkdownRenderer content={subtaskText} baseTextSize="text-xs md:text-sm" inline />
                                     </div>
                                   </label>
                                 );

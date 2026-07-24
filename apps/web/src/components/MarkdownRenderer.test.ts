@@ -125,4 +125,13 @@ describe('applyInlineFormatting', () => {
       );
     });
   });
+
+  describe('inline mode formatting', () => {
+    it('should format inline text without block paragraph tags or top/bottom margins', () => {
+      const output = applyInlineFormatting('Fokus pada **konsep utama** fisika kuantum');
+      expect(output).toBe('Fokus pada konsep utama fisika kuantum');
+      expect(output).not.toContain('<p');
+    });
+  });
 });
+

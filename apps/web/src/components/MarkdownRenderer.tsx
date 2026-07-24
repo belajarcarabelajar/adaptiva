@@ -202,10 +202,17 @@ export const applyInlineFormatting = (text: string): string => {
 interface MarkdownRendererProps {
   content: string;
   baseTextSize?: string;
+  inline?: boolean;
 }
 
-function MarkdownRendererInternal({ content, baseTextSize = "text-xl" }: MarkdownRendererProps) {
+function MarkdownRendererInternal({ content, baseTextSize = "text-xl", inline = false }: MarkdownRendererProps) {
   if (!content) return null;
+
+  if (inline) {
+    const formattedLine = applyInlineFormatting(content);
+    const sanitizedLine = DOMPurify.sanitize(formattedLine, DOMPURIFY_CONFIG);
+    return <span className={baseTextSize} dangerouslySetInnerHTML={{ __html: sanitizedLine }} />;
+  }
 
   // Pre-process content: global em dash cleanup & emoji removal
   const cleanContent = content

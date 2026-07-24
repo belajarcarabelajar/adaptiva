@@ -26,10 +26,12 @@ die()   { echo -e "${RED}✖ $*${RESET}" >&2; exit 1; }
 # ── Parse flags ──────────────────────────────────────────────────────────────
 SKIP_BUILD=false
 SKIP_PUSH=false
+SKIP_TEST=false
 for arg in "$@"; do
   case $arg in
     --skip-build) SKIP_BUILD=true ;;
     --skip-push)  SKIP_PUSH=true  ;;
+    --skip-test)  SKIP_TEST=true  ;;
     *) die "Unknown argument: $arg" ;;
   esac
 done
@@ -49,9 +51,16 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 # Export CF credentials (support both CLOUDFLARE_* and CF_* naming)
-set -a
-eval $(grep -E '^(CLOUDFLARE_API_TOKEN|CF_API_TOKEN|CLOUDFLARE_ACCOUNT_ID|CF_ACCOUNT_ID)=' "$ENV_FILE" || true)
-set +a
+if [[ -f "$ENV_FILE" ]]; then
+  while IFS='=' read -r key val || [[ -n "$key" ]]; do
+    # Remove leading/trailing spaces and quotes
+    key=$(echo "$key" | xargs 2>/dev/null || true)
+    val=$(echo "$val" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//" 2>/dev/null || true)
+    if [[ "$key" =~ ^(CLOUDFLARE_API_TOKEN|CF_API_TOKEN|CLOUDFLARE_ACCOUNT_ID|CF_ACCOUNT_ID)$ ]]; then
+      export "$key"="$val"
+    fi
+  done < "$ENV_FILE"
+fi
 
 CF_API_TOKEN="${CLOUDFLARE_API_TOKEN:-${CF_API_TOKEN:-}}"
 CF_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-${CF_ACCOUNT_ID:-}}"
@@ -72,15 +81,19 @@ cd "$ROOT_DIR"
 
 # ── Step 1: Typecheck & Tests ────────────────────────────────────────────────
 step "1/5  Typecheck & Automated Tests"
-if ! bun x tsc --noEmit --project apps/web/tsconfig.json 2>&1; then
-  die "Typecheck failed — fix type errors before deploying."
-fi
-ok "Typecheck passed"
+if [[ "$SKIP_TEST" == "true" ]]; then
+  warn "Skipping tests and typecheck (--skip-test flag set)"
+else
+  if ! bun x tsc --noEmit --project apps/web/tsconfig.json 2>&1; then
+    die "Typecheck failed — fix type errors before deploying."
+  fi
+  ok "Typecheck passed"
 
-if ! bun run test 2>&1; then
-  die "Unit tests failed — fix failing tests before deploying."
+  if ! bun run test 2>&1; then
+    die "Unit tests failed — fix failing tests before deploying."
+  fi
+  ok "Unit tests passed"
 fi
-ok "Unit tests passed"
 
 # ── Step 2: Build ─────────────────────────────────────────────────────────────
 step "2/5  Build Application"
@@ -128,7 +141,7 @@ DEPLOY_START=$(date +%s)
 DEPLOY_OUTPUT=$(
   CLOUDFLARE_API_TOKEN="$CF_API_TOKEN" \
   CLOUDFLARE_ACCOUNT_ID="$CF_ACCOUNT_ID" \
-  npx -y wrangler pages deploy apps/web/dist \
+  bun x wrangler pages deploy apps/web/dist \
     --project-name "$CF_PROJECT_NAME" \
     --branch "$CF_BRANCH" \
     --commit-dirty=true \

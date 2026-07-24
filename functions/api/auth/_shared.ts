@@ -20,6 +20,12 @@ type PagesFunction<E = unknown> = (
   context: PagesContext<E>,
 ) => Response | Promise<Response>;
 
+interface KVNamespace {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
 export interface Env {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
@@ -391,4 +397,4 @@ export function redirectResponse(location: string, status = 302, extraHeaders: R
   return new Response(null, { status, headers });
 }
 
-export { PagesContext, PagesFunction };
+export type { PagesContext, PagesFunction };
