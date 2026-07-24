@@ -106,7 +106,26 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const sid = await createSession(env, session);
     const cookie = buildSessionCookie(sid, isHttps(request, env));
 
-    return redirectResponse(next, 302, { "Set-Cookie": cookie });
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Logging in...</title>
+</head>
+<body>
+  <p>Connecting to Adaptiva...</p>
+  <script>
+    window.location.replace(${JSON.stringify(next)});
+  </script>
+</body>
+</html>`;
+
+    const headers = new Headers({
+      "content-type": "text/html; charset=utf-8",
+      "Set-Cookie": cookie,
+    });
+
+    return new Response(html, { status: 200, headers });
   } catch (err) {
     console.error("Unhandled error in callback handler:", err);
     return redirectResponse("/?auth_error=unexpected_callback_error");
