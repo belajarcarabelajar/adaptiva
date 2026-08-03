@@ -41,6 +41,7 @@ import AuthModal from './components/AuthModal';
 import PointsBadge from './components/PointsBadge';
 import InsufficientPointsModal from './components/InsufficientPointsModal';
 import { useAuth } from './hooks/useAuth';
+import { z } from 'zod';
 
 
 
@@ -218,6 +219,11 @@ const App: React.FC = () => {
       const storedHistory = localStorage.getItem('adaptivaStudyHistory');
       if (storedHistory) {
         const parsedHistory: HistoryItem[] = JSON.parse(storedHistory);
+        const moduleStatusSchema = z.object({
+            summaryLoaded: z.boolean().default(false),
+            quizTaken: z.boolean().default(false),
+        });
+
         const updatedHistory = parsedHistory.map(item => {
             const newModuleCompletionStatus: Record<string, { summaryLoaded: boolean; quizTaken: boolean; }> = {};
             
@@ -226,12 +232,10 @@ const App: React.FC = () => {
                 let summaryLoaded = false;
                 let quizTaken = false;
 
-                if (typeof oldStatus === 'object' && oldStatus !== null) {
-                    // FIX: Safely access properties on a potentially untyped object from localStorage.
-                    // The 'unknown' type from JSON parsing requires a safer access pattern.
-                    const statusObj = oldStatus as Record<string, unknown>;
-                    summaryLoaded = Boolean(statusObj['summaryLoaded']);
-                    quizTaken = Boolean(statusObj['quizTaken']);
+                const parseResult = moduleStatusSchema.safeParse(oldStatus);
+                if (parseResult.success) {
+                    summaryLoaded = parseResult.data.summaryLoaded;
+                    quizTaken = parseResult.data.quizTaken;
                 } else if (typeof oldStatus === 'boolean') {
                     summaryLoaded = oldStatus;
                 }
