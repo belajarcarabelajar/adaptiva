@@ -355,10 +355,15 @@ export const generateInitialCurriculumOutline = async (
 
     if (parsedData && parsedData.moduleTitles && parsedData.syllabus) {
       const originalTitlesCount = parsedData.moduleTitles.length;
-      const validModules: CurriculumModule[] = parsedData.moduleTitles
-        .map(title => typeof title === 'string' ? cleanModuleTitle(title) : "") 
-        .filter(title => title !== "") 
-        .map(title => ({ title, moduleMaterial: undefined, isLoading: false, loadingError: null }));
+      const validModules: CurriculumModule[] = parsedData.moduleTitles.reduce<CurriculumModule[]>((acc, title) => {
+        if (typeof title === 'string') {
+          const cleanedTitle = cleanModuleTitle(title);
+          if (cleanedTitle !== "") {
+            acc.push({ title: cleanedTitle, moduleMaterial: undefined, isLoading: false, loadingError: null });
+          }
+        }
+        return acc;
+      }, []);
 
       if (originalTitlesCount > 0 && validModules.length === 0) {
         console.warn("All module titles received from Gemini were empty or whitespace after trimming. Curriculum may be incomplete or unusable for module generation.");
