@@ -6,12 +6,13 @@
 import {
   getSession,
   jsonResponse,
+  getAllowedOrigin,
   type Env,
   type PagesFunction,
 } from "./_shared";
 
 export const onRequestOptions: PagesFunction<Env> = async (context) => {
-  const origin = context.request.headers.get("origin") || "*";
+  const origin = getAllowedOrigin(context.request);
   return new Response(null, {
     status: 204,
     headers: {
