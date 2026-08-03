@@ -2160,25 +2160,35 @@ const App: React.FC = () => {
     }
   }, [selectedHistoryItemId, topic, targetLanguage, refresh]);
 
+  // --- Resource Management Effects ---
+
+  // 1. Trigger fetch if resources are missing when navigating to the tab
+  const shouldFetchResources = activeTab === 'resources' &&
+                               selectedHistoryItemId !== null &&
+                               currentLearningJourneyMemo != null &&
+                               !currentLearningJourneyMemo.learningResources &&
+                               !isFetchingResources &&
+                               fetchResourcesError === null;
+
   useEffect(() => {
-    // This effect now primarily loads resources from history if available,
-    // or if a new journey was just created, currentLearningResources would already be set.
-    // The manual fetch is only if explicitly navigating to the tab and resources are missing for some reason.
-    if (activeTab === 'resources' && selectedHistoryItemId && !isFetchingResources) {
-      const currentItem = currentLearningJourneyMemo;
-      if (currentItem) {
-        if (currentItem.learningResources) {
-            if (!currentLearningResources || currentLearningResources.content !== currentItem.learningResources.content) {
-               setCurrentLearningResources(currentItem.learningResources);
-            }
-        } else if (!fetchResourcesError) { 
-            // If not in history and no error previously, attempt fetch (e.g., if initial fetch failed silently or was skipped)
-            handleFetchResources();
-        }
-      }
+    if (shouldFetchResources) {
+      handleFetchResources();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, selectedHistoryItemId, currentLearningJourneyMemo]); // Removed currentLearningResources, isFetchingResources, fetchResourcesError dependencies to simplify and avoid re-fetches
+  }, [shouldFetchResources, handleFetchResources]);
+
+  // 2. Sync fetched or existing resources from history to local state
+  useEffect(() => {
+    const currentItem = currentLearningJourneyMemo;
+    if (activeTab === 'resources' && currentItem?.learningResources) {
+      const newResources = currentItem.learningResources;
+      setCurrentLearningResources(prev => {
+        if (!prev || prev.content !== newResources.content) {
+          return newResources;
+        }
+        return prev;
+      });
+    }
+  }, [activeTab, currentLearningJourneyMemo]);
 
 
 
