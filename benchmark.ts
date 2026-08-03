@@ -2,8 +2,10 @@ import { performance } from 'perf_hooks';
 
 const iterations = 100000;
 
+type ModuleCompletionStatus = { summaryLoaded: boolean; quizTaken: boolean };
+
 // Mock data
-const moduleCompletionStatus: Record<string, any> = {};
+const moduleCompletionStatus: Record<string, ModuleCompletionStatus> = {};
 for (let i = 0; i < 100; i++) {
   moduleCompletionStatus[`module_${i}`] = {
     summaryLoaded: Math.random() > 0.5,
@@ -11,7 +13,7 @@ for (let i = 0; i < 100; i++) {
   };
 }
 
-const planTaskCompletionStatus: Record<string, any> = {};
+const planTaskCompletionStatus: Record<string, boolean> = {};
 for (let i = 0; i < 100; i++) {
   planTaskCompletionStatus[i] = Math.random() > 0.5;
 }
@@ -26,8 +28,8 @@ function runOriginal() {
   let quizzes = 0;
   let tasks = 0;
   for (let i = 0; i < iterations; i++) {
-    summaries = Object.values(currentItem.moduleCompletionStatus).filter((s: any) => s.summaryLoaded).length;
-    quizzes = Object.values(currentItem.moduleCompletionStatus).filter((s: any) => s.quizTaken).length;
+    summaries = Object.values(currentItem.moduleCompletionStatus).filter((s: ModuleCompletionStatus) => s.summaryLoaded).length;
+    quizzes = Object.values(currentItem.moduleCompletionStatus).filter((s: ModuleCompletionStatus) => s.quizTaken).length;
     tasks = Object.values(currentItem.planTaskCompletionStatus).filter(s => s).length;
   }
   return { summaries, quizzes, tasks };
@@ -38,7 +40,7 @@ function runOptimized() {
   let quizzes = 0;
   let tasks = 0;
   for (let i = 0; i < iterations; i++) {
-    const counts = Object.values(currentItem.moduleCompletionStatus).reduce((acc: any, status: any) => {
+    const counts = Object.values(currentItem.moduleCompletionStatus).reduce((acc: { summaries: number; quizzes: number }, status: ModuleCompletionStatus) => {
         if (status.summaryLoaded) acc.summaries++;
         if (status.quizTaken) acc.quizzes++;
         return acc;
@@ -46,7 +48,7 @@ function runOptimized() {
     summaries = counts.summaries;
     quizzes = counts.quizzes;
 
-    tasks = Object.values(currentItem.planTaskCompletionStatus).reduce((count: any, status: any) => count + (status ? 1 : 0), 0);
+    tasks = Object.values(currentItem.planTaskCompletionStatus).reduce((count: number, status: boolean) => count + (status ? 1 : 0), 0);
   }
   return { summaries, quizzes, tasks };
 }
