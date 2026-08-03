@@ -2497,7 +2497,7 @@ const App: React.FC = () => {
                       <div className="flex justify-between items-center mb-3 border-b border-brand-mediumGray dark:border-gray-600 pb-2">
                         <h3 className="text-lg md:text-xl font-semibold text-brand-blue dark:text-blue-300">Modul</h3>
                         <span className="text-xs font-semibold px-2 py-0.5 rounded bg-brand-blue/10 text-brand-blue dark:bg-blue-900/40 dark:text-blue-300">
-                          {curriculum.modules.filter(m => currentHistoryJourney?.moduleCompletionStatus[m.title]?.summaryLoaded).length}/{curriculum.modules.length} Selesai
+                          {curriculum.modules.reduce((count, m) => count + (currentHistoryJourney?.moduleCompletionStatus[m.title]?.summaryLoaded ? 1 : 0), 0)}/{curriculum.modules.length} Selesai
                         </span>
                       </div>
                       {curriculum.modules.length === 0 ? (
