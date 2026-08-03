@@ -158,6 +158,22 @@ export function getOrigin(request: Request, env: Env): string {
   return new URL(request.url).origin;
 }
 
+export function getAllowedOrigin(request: Request): string {
+  const origin = request.headers.get("origin");
+  const fallback = new URL(request.url).origin;
+  if (!origin) return fallback;
+  if (origin === fallback) return origin;
+  try {
+    const url = new URL(origin);
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+      return origin;
+    }
+  } catch {
+    // Ignore invalid origin URLs
+  }
+  return fallback;
+}
+
 export function isHttps(request: Request, env: Env): boolean {
   if (env.AUTH_BASE_URL) return getOrigin(request, env).startsWith("https://");
   const proto = request.headers.get("x-forwarded-proto") || request.headers.get("cf-visitor");
@@ -378,7 +394,7 @@ export function isEmailAllowed(env: Env, email: string): boolean {
 // --- Response helpers ---
 
 export function jsonResponse(request: Request, body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
-  const origin = request.headers.get("origin") || "*";
+  const origin = getAllowedOrigin(request);
   const headers = new Headers({
     "content-type": "application/json",
     "Access-Control-Allow-Origin": origin,

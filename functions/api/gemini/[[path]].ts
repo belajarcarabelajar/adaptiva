@@ -48,7 +48,7 @@ export const ACTION_POINT_COSTS: Record<string, number> = {
   default: 5,
 };
 
-import { getSession, deductUserPoints, refundUserPoints, type Env as AuthEnv } from "../auth/_shared";
+import { getSession, deductUserPoints, refundUserPoints, getAllowedOrigin, type Env as AuthEnv } from "../auth/_shared";
 
 // Strip the /api/gemini prefix that triggered this Function.
 // `params.path` is the array of path segments AFTER the [[path]] wildcard.
@@ -259,7 +259,7 @@ async function proxyRequest(request: Request, env: Env, params: PagesContext["pa
 
 function corsHeaders(request: Request, extra: Record<string, string> = {}): Headers {
   const headers = new Headers(extra);
-  const origin = request.headers.get("origin") || "*";
+  const origin = getAllowedOrigin(request);
   headers.set("Access-Control-Allow-Origin", origin);
   headers.set("Access-Control-Allow-Credentials", "true");
   headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
