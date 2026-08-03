@@ -19,7 +19,34 @@ dotenv.config({ path: ENV_FILE });
 const app = express();
 const port = process.env.PORT || 3001;
 
-app.use(cors());
+// Define allowed origins
+const defaultAllowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+];
+
+// If ALLOWED_ORIGINS is provided in environment variables, use that,
+// otherwise use the default localhost origins.
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : defaultAllowedOrigins;
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  }
+};
+
+app.use(cors(corsOptions));
 
 app.use(
   '/api/gemini',
