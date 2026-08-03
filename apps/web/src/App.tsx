@@ -265,7 +265,7 @@ const App: React.FC = () => {
                         ...m,
                         isLoading: m.isLoading || false,
                         loadingError: m.loadingError || null,
-                        moduleMaterial: m.moduleMaterial || (m as any).lectureSummary || undefined, 
+                        moduleMaterial: m.moduleMaterial || m.lectureSummary || undefined,
                     })),
                 },
                 moduleCompletionStatus: newModuleCompletionStatus,
