@@ -1,3 +1,4 @@
+import { Chat } from "@google/genai";
 import React, { useState, useCallback, useEffect, useRef, memo, useMemo } from 'react';
 import { 
     Curriculum, SevenDayPlan, QuizQuestion, ChatMessage, TutorSession, 
@@ -621,7 +622,7 @@ const App: React.FC = () => {
     let curriculumOutlineData: Curriculum | null = null;
     let planData: SevenDayPlan | null = null;
     let initialTutorMessage = "";
-    let newChat: any = null; // Using 'any' for Chat due to potential library differences
+    let newChat: Chat | null = null; // Using Chat from @google/genai
     let fetchedResources: LearningResource | null = null;
 
     try {
