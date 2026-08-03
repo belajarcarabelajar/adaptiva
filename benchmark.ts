@@ -76,25 +76,19 @@ function runOptimizedForLoop() {
   return { summaries, quizzes, tasks };
 }
 
-console.log("Warming up...");
+console.info("Warming up...");
 runOriginal();
 runOptimized();
 runOptimizedForLoop();
 
-console.log("Benchmarking original...");
-const startOriginal = performance.now();
+console.time("Original");
 runOriginal();
-const endOriginal = performance.now();
-console.log(`Original: ${endOriginal - startOriginal} ms`);
+console.timeEnd("Original");
 
-console.log("Benchmarking optimized (reduce)...");
-const startOptimized = performance.now();
+console.time("Optimized (reduce)");
 runOptimized();
-const endOptimized = performance.now();
-console.log(`Optimized (reduce): ${endOptimized - startOptimized} ms`);
+console.timeEnd("Optimized (reduce)");
 
-console.log("Benchmarking optimized (for loop)...");
-const startOptimizedForLoop = performance.now();
+console.time("Optimized (for loop)");
 runOptimizedForLoop();
-const endOptimizedForLoop = performance.now();
-console.log(`Optimized (for loop): ${endOptimizedForLoop - startOptimizedForLoop} ms`);
+console.timeEnd("Optimized (for loop)");
