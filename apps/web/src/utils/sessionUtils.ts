@@ -19,7 +19,7 @@ export function isStandardRefresh(): boolean {
 
   // Fallback for older browsers / JS DOM test environments
   try {
-    return (performance as any)?.navigation?.type === 1;
+    return (performance as Performance & { navigation?: { type: number } })?.navigation?.type === 1;
   } catch (e) {
     return false;
   }
