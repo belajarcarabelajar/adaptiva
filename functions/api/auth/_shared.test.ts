@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Env } from "./_shared";
 import {
   buildClearCookie,
   randomToken,
   refundUserPoints,
-  type Env,
+  isEmailAllowed,
   SESSION_COOKIE,
   DEFAULT_INITIAL_POINTS,
 } from "./_shared";
@@ -46,6 +47,45 @@ describe("randomToken", () => {
     const token1 = randomToken(32);
     const token2 = randomToken(32);
     expect(token1).not.toEqual(token2);
+  });
+});
+
+describe("isEmailAllowed", () => {
+  it("returns true if ALLOWED_EMAIL_DOMAINS is not set", () => {
+    const env = {} as Env;
+    expect(isEmailAllowed(env, "test@example.com")).toBe(true);
+  });
+
+  it("returns true if ALLOWED_EMAIL_DOMAINS is empty or just whitespace", () => {
+    const env = { ALLOWED_EMAIL_DOMAINS: "   " } as Env;
+    expect(isEmailAllowed(env, "test@example.com")).toBe(true);
+  });
+
+  it("returns true if allowed domains list parses to empty", () => {
+    const env = { ALLOWED_EMAIL_DOMAINS: ", , ," } as Env;
+    expect(isEmailAllowed(env, "test@example.com")).toBe(true);
+  });
+
+  it("returns true if email domain is in allowed list", () => {
+    const env = { ALLOWED_EMAIL_DOMAINS: "example.com, test.org" } as Env;
+    expect(isEmailAllowed(env, "user@example.com")).toBe(true);
+    expect(isEmailAllowed(env, "user@test.org")).toBe(true);
+  });
+
+  it("returns false if email domain is not in allowed list", () => {
+    const env = { ALLOWED_EMAIL_DOMAINS: "example.com" } as Env;
+    expect(isEmailAllowed(env, "user@other.com")).toBe(false);
+  });
+
+  it("is case insensitive for both allowed list and email domain", () => {
+    const env = { ALLOWED_EMAIL_DOMAINS: "ExAmPlE.cOm" } as Env;
+    expect(isEmailAllowed(env, "user@example.com")).toBe(true);
+    expect(isEmailAllowed(env, "user@EXAMPLE.COM")).toBe(true);
+  });
+
+  it("handles emails without a domain correctly", () => {
+    const env = { ALLOWED_EMAIL_DOMAINS: "example.com" } as Env;
+    expect(isEmailAllowed(env, "invalid-email")).toBe(false);
   });
 });
 
