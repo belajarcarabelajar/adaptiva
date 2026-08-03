@@ -178,8 +178,8 @@ async function proxyRequest(request: Request, env: Env, params: PagesContext["pa
 
     let errorDetail = "";
     try {
-      const errJson = (await upstream.clone().json()) as any;
-      if (errJson?.error?.message) {
+      const errJson = (await upstream.clone().json()) as { error?: { message?: string } } | null;
+      if (typeof errJson?.error?.message === "string") {
         errorDetail = errJson.error.message;
       }
     } catch {
