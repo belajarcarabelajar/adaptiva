@@ -51,7 +51,8 @@ if (!namespaceId) {
     );
   }
   // wrangler prints JSON like: { "id": "abc123..." }
-  const m = stdout.match(/"id"\s*:\s*"([^"]+)"/);
+  // or TOML like: { binding = "SESSIONS", id = "abc123..." }
+  const m = stdout.match(/(?:"id"|id)\s*[:=]\s*"([^"]+)"/);
   if (!m) {
     fail(`Could not parse namespace id from wrangler output:\n${stdout}`);
   }
