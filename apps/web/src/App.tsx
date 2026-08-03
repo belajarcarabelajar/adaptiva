@@ -2857,8 +2857,7 @@ const App: React.FC = () => {
                             <p className={`${largeTextBase} text-brand-black/70 dark:text-gray-400`}>No flashcard decks created for this learning journey yet.</p>
                         ) : (
                             <div className="space-y-2">
-                                {/* FIX: Cast deckData to FlashcardDeck to allow property access. */}
-                                {Object.entries(currentHistoryJourney.flashcardDecks).map(([deckModuleId, deck]: [string, FlashcardDeck]) => {
+                                {Object.entries(currentHistoryJourney.flashcardDecks).map(([deckModuleId, deck]) => {
                                     return (
                                     <button
                                         key={deckModuleId}
