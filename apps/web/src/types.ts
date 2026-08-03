@@ -3,6 +3,7 @@ import { Chat } from "@google/genai";
 export interface CurriculumModule {
   title: string;
   moduleMaterial?: string; 
+  lectureSummary?: string; // For backward compatibility with older data
   isLoading?: boolean;     
   loadingError?: string | null; 
 }
