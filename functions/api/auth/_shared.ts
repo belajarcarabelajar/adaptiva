@@ -175,20 +175,37 @@ export function getOrigin(request: Request, env?: Env): string {
   return new URL(request.url).origin;
 }
 
-export function getAllowedOrigin(request: Request): string {
-  const origin = request.headers.get("origin");
-  const fallback = new URL(request.url).origin;
-  if (!origin) return fallback;
-  if (origin === fallback) return origin;
+export function getAllowedOrigin(request: Request, env?: Env): string {
+  const originHeader = request.headers.get("origin");
+  const reqOrigin = new URL(request.url).origin;
+
+  // If no origin header, assume same-origin request
+  if (!originHeader) return reqOrigin;
+
   try {
-    const url = new URL(origin);
-    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
-      return origin;
+    const originUrl = new URL(originHeader);
+
+    // Exact match of the request URL's origin
+    if (originHeader === reqOrigin) return originHeader;
+
+    // Match the configured AUTH_BASE_URL if available
+    if (env?.AUTH_BASE_URL) {
+      try {
+        const baseOrigin = new URL(env.AUTH_BASE_URL).origin;
+        if (originHeader === baseOrigin) return originHeader;
+      } catch {}
     }
+
+    // Allow localhost/127.0.0.1 for local development
+    if (originUrl.hostname === "localhost" || originUrl.hostname === "127.0.0.1") {
+      return originHeader;
+    }
+
+    // Default to the request's origin to prevent arbitrary reflection
+    return reqOrigin;
   } catch {
-    // Ignore invalid origin URLs
+    return reqOrigin;
   }
-  return fallback;
 }
 
 export function isHttps(request: Request, env?: Env): boolean {
@@ -432,8 +449,9 @@ export function jsonResponse(
   body: unknown,
   status = 200,
   extraHeaders: Record<string, string> = {},
+  env?: Env,
 ): Response {
-  const origin = getAllowedOrigin(request);
+  const origin = getAllowedOrigin(request, env);
   const headers = new Headers({
     "content-type": "application/json",
     "Access-Control-Allow-Origin": origin,

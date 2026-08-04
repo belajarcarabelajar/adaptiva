@@ -18,6 +18,8 @@
 
 // Self-contained context type so this file has no runtime dependencies on
 // @cloudflare/workers-types. Mirrors the PagesFunction context shape.
+import { getAllowedOrigin } from "../auth/_shared";
+
 interface PagesContext<E = unknown> {
   request: Request;
   env: E;
@@ -48,7 +50,7 @@ export const ACTION_POINT_COSTS: Record<string, number> = {
   default: 5,
 };
 
-import { getSession, deductUserPoints, refundUserPoints, getAllowedOrigin, type Env as AuthEnv } from "../auth/_shared";
+import { getSession, deductUserPoints, refundUserPoints, type Env as AuthEnv } from "../auth/_shared";
 
 // Strip the /api/gemini prefix that triggered this Function.
 // `params.path` is the array of path segments AFTER the [[path]] wildcard.
@@ -257,9 +259,9 @@ async function proxyRequest(request: Request, env: Env, params: PagesContext["pa
   });
 }
 
-function corsHeaders(request: Request, extra: Record<string, string> = {}): Headers {
+function corsHeaders(request: Request, env?: Env, extra: Record<string, string> = {}): Headers {
   const headers = new Headers(extra);
-  const origin = getAllowedOrigin(request);
+  const origin = getAllowedOrigin(request, env as any);
   headers.set("Access-Control-Allow-Origin", origin);
   headers.set("Access-Control-Allow-Credentials", "true");
   headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
@@ -273,13 +275,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   if (context.request.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
-      headers: corsHeaders(context.request),
+      headers: corsHeaders(context.request, context.env),
     });
   }
 
   try {
     const res = await proxyRequest(context.request, context.env, context.params);
-    const headers = corsHeaders(context.request, Object.fromEntries(res.headers.entries()));
+    const headers = corsHeaders(context.request, context.env, Object.fromEntries(res.headers.entries()));
     return new Response(res.body, {
       status: res.status,
       headers,
@@ -289,7 +291,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const cost = ACTION_POINT_COSTS[action] ?? 5;
     const refund = await refundUserPoints(context.request, context.env as unknown as AuthEnv, cost);
     const message = err instanceof Error ? err.message : String(err);
-    const headers = corsHeaders(context.request, {
+    const headers = corsHeaders(context.request, context.env, {
       "content-type": "application/json",
       "x-adaptiva-points": String(refund.remainingPoints),
     });

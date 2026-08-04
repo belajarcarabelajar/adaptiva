@@ -12,7 +12,7 @@ import {
 } from "./_shared";
 
 export const onRequestOptions: PagesFunction<Env> = async (context) => {
-  const origin = getAllowedOrigin(context.request);
+  const origin = getAllowedOrigin(context.request, context.env);
   return new Response(null, {
     status: 204,
     headers: {
@@ -28,7 +28,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const { env, request } = context;
   const session = await getSession(request, env);
   if (!session) {
-    return jsonResponse(request, { error: "not_authenticated" }, 401);
+    return jsonResponse(request, { error: "not_authenticated" }, 401, {}, env);
   }
   return jsonResponse(request, {
     user: {
@@ -38,5 +38,5 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       picture: session.picture,
       points: session.points ?? 100,
     },
-  });
+  }, 200, {}, env);
 };
