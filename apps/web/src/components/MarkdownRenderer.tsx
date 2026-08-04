@@ -205,6 +205,74 @@ interface MarkdownRendererProps {
   inline?: boolean;
 }
 
+const createMarkup = (line: string, key: string | number, baseTextSize: string): React.ReactElement | null => {
+  const trimmedLine = line.trim();
+  if (!trimmedLine) return null;
+
+  const headingMatch = trimmedLine.match(HEADING_REGEX);
+  const numberedListMatch = trimmedLine.match(NUMBERED_LIST_REGEX);
+
+  if (headingMatch) {
+    const level = headingMatch[1].length;
+    const titleText = headingMatch[2].trim();
+    const formattedHtml = applyInlineFormatting(titleText);
+    const sanitizedHtml = DOMPurify.sanitize(formattedHtml, DOMPURIFY_CONFIG);
+
+    switch (level) {
+      case 1:
+        return <h1 key={key} className="text-2xl md:text-3xl font-bold my-4 md:my-5 leading-tight text-brand-blue dark:text-blue-300" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+      case 2:
+        return <h2 key={key} className="text-xl md:text-2xl font-semibold my-3 md:my-4 leading-snug text-brand-blue dark:text-blue-300" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+      case 3:
+        return <h3 key={key} className="text-lg md:text-xl font-semibold my-2.5 md:my-3 leading-snug text-brand-orange dark:text-orange-400" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+      case 4:
+        return <h4 key={key} className="text-base md:text-lg font-semibold my-2 md:my-2.5 text-brand-orange dark:text-orange-400" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+      case 5:
+        return <h5 key={key} className="text-sm md:text-base font-semibold my-1.5 md:my-2 text-brand-blue dark:text-blue-300" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+      case 6:
+      default:
+        return <h6 key={key} className="text-xs md:text-sm font-semibold my-1 md:my-1.5 text-brand-blue dark:text-blue-300" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+    }
+  } else if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ') || trimmedLine.startsWith('✅ ') || numberedListMatch) {
+    let contentPart = trimmedLine;
+    let displayPrefix = '';
+
+    if (trimmedLine.startsWith('✅ ')) {
+      contentPart = trimmedLine.substring(2);
+      displayPrefix = '✅ ';
+      if (BULLETED_LIST_REGEX.test(contentPart)) {
+          contentPart = contentPart.substring(contentPart.match(BULLETED_LIST_REGEX)![0].length);
+      } else if (NUMBERED_LIST_REGEX.test(contentPart)) {
+          contentPart = contentPart.substring(contentPart.match(NUMBERED_LIST_REGEX)![0].length);
+      }
+    } else if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
+      contentPart = trimmedLine.substring(2);
+      if (BULLETED_LIST_REGEX.test(contentPart)) {
+          contentPart = contentPart.substring(contentPart.match(BULLETED_LIST_REGEX)![0].length);
+      }
+    } else if (numberedListMatch) {
+      contentPart = trimmedLine.substring(numberedListMatch[0].length);
+      const innerMatch = contentPart.match(NUMBERED_LIST_REGEX);
+      if (innerMatch) {
+          contentPart = contentPart.substring(innerMatch[0].length);
+      }
+    }
+
+    const formattedContentPart = applyInlineFormatting(contentPart);
+    const sanitizedContentPart = DOMPurify.sanitize(formattedContentPart, DOMPURIFY_CONFIG);
+    return (
+      <li key={key} className={`ml-6 md:ml-8 my-1 md:my-1.5 ${baseTextSize} dark:text-gray-200`}>
+        {displayPrefix && <span className="mr-1">{displayPrefix}</span>}
+        <span dangerouslySetInnerHTML={{ __html: sanitizedContentPart }} />
+      </li>
+    );
+  }
+
+  const formattedLine = applyInlineFormatting(trimmedLine);
+  const sanitizedLine = DOMPurify.sanitize(formattedLine, DOMPURIFY_CONFIG);
+  return <p key={key} className={`my-3 md:my-3.5 ${baseTextSize} dark:text-gray-200`} dangerouslySetInnerHTML={{ __html: sanitizedLine }} />;
+};
+
 function MarkdownRendererInternal({ content, baseTextSize = "text-xl", inline = false }: MarkdownRendererProps) {
   if (!content) return null;
 
@@ -220,81 +288,19 @@ function MarkdownRendererInternal({ content, baseTextSize = "text-xl", inline = 
     .replace(/\s+--\s+/g, ', ')
     .replace(/\p{Extended_Pictographic}/gu, '');
 
-  const createMarkup = (line: string, key: string | number): React.ReactElement | null => {
-    const trimmedLine = line.trim();
-    if (!trimmedLine) return null;
-
-    const headingMatch = trimmedLine.match(HEADING_REGEX);
-    const numberedListMatch = trimmedLine.match(NUMBERED_LIST_REGEX);
-
-    if (headingMatch) {
-      const level = headingMatch[1].length;
-      const titleText = headingMatch[2].trim();
-      const formattedHtml = applyInlineFormatting(titleText);
-      const sanitizedHtml = DOMPurify.sanitize(formattedHtml, DOMPURIFY_CONFIG);
-
-      switch (level) {
-        case 1:
-          return <h1 key={key} className="text-2xl md:text-3xl font-bold my-4 md:my-5 leading-tight text-brand-blue dark:text-blue-300" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
-        case 2:
-          return <h2 key={key} className="text-xl md:text-2xl font-semibold my-3 md:my-4 leading-snug text-brand-blue dark:text-blue-300" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
-        case 3:
-          return <h3 key={key} className="text-lg md:text-xl font-semibold my-2.5 md:my-3 leading-snug text-brand-orange dark:text-orange-400" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
-        case 4:
-          return <h4 key={key} className="text-base md:text-lg font-semibold my-2 md:my-2.5 text-brand-orange dark:text-orange-400" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
-        case 5:
-          return <h5 key={key} className="text-sm md:text-base font-semibold my-1.5 md:my-2 text-brand-blue dark:text-blue-300" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
-        case 6:
-        default:
-          return <h6 key={key} className="text-xs md:text-sm font-semibold my-1 md:my-1.5 text-brand-blue dark:text-blue-300" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
-      }
-    } else if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ') || trimmedLine.startsWith('✅ ') || numberedListMatch) {
-      let contentPart = trimmedLine;
-      let displayPrefix = '';
-
-      if (trimmedLine.startsWith('✅ ')) {
-        contentPart = trimmedLine.substring(2); 
-        displayPrefix = '✅ ';
-        if (BULLETED_LIST_REGEX.test(contentPart)) {
-            contentPart = contentPart.substring(contentPart.match(BULLETED_LIST_REGEX)![0].length);
-        } else if (NUMBERED_LIST_REGEX.test(contentPart)) {
-            contentPart = contentPart.substring(contentPart.match(NUMBERED_LIST_REGEX)![0].length);
-        }
-      } else if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
-        contentPart = trimmedLine.substring(2);
-        if (BULLETED_LIST_REGEX.test(contentPart)) {
-            contentPart = contentPart.substring(contentPart.match(BULLETED_LIST_REGEX)![0].length);
-        }
-      } else if (numberedListMatch) {
-        contentPart = trimmedLine.substring(numberedListMatch[0].length);
-        const innerMatch = contentPart.match(NUMBERED_LIST_REGEX);
-        if (innerMatch) {
-            contentPart = contentPart.substring(innerMatch[0].length);
-        }
-      }
-      
-      const formattedContentPart = applyInlineFormatting(contentPart);
-      const sanitizedContentPart = DOMPurify.sanitize(formattedContentPart, DOMPURIFY_CONFIG);
-      return (
-        <li key={key} className={`ml-6 md:ml-8 my-1 md:my-1.5 ${baseTextSize} dark:text-gray-200`}>
-          {displayPrefix && <span className="mr-1">{displayPrefix}</span>}
-          <span dangerouslySetInnerHTML={{ __html: sanitizedContentPart }} />
-        </li>
-      );
-    }
-    
-    const formattedLine = applyInlineFormatting(trimmedLine);
-    const sanitizedLine = DOMPurify.sanitize(formattedLine, DOMPURIFY_CONFIG);
-    return <p key={key} className={`my-3 md:my-3.5 ${baseTextSize} dark:text-gray-200`} dangerouslySetInnerHTML={{ __html: sanitizedLine }} />;
-  };
-  
   const lines = cleanContent.split('\n');
   const processedLines = lines.filter(line => line.trim() !== ''); 
 
   const elements = processedLines.map((line, index) => {
-      return createMarkup(line, index);
+      return createMarkup(line, index, baseTextSize);
   }).filter((el): el is React.ReactElement => el !== null);
 
+  const groupedElements = groupElements(elements, processedLines);
+
+  return <div className={`max-w-none text-brand-black dark:text-gray-100 prose-headings:text-brand-blue dark:prose-headings:text-blue-300 ${baseTextSize}`}>{groupedElements}</div>;
+}
+
+const groupElements = (elements: React.ReactElement[], processedLines: string[]): React.ReactElement[] => {
   const groupedElements: React.ReactElement[] = [];
   let currentListItems: React.ReactElement[] = [];
   let currentListType: 'ul' | 'ol' | null = null;
@@ -342,8 +348,8 @@ function MarkdownRendererInternal({ content, baseTextSize = "text-xl", inline = 
       }
   }
 
-  return <div className={`max-w-none text-brand-black dark:text-gray-100 prose-headings:text-brand-blue dark:prose-headings:text-blue-300 ${baseTextSize}`}>{groupedElements}</div>;
-}
+  return groupedElements;
+};
 
 const MemoizedMarkdownRenderer = memo(MarkdownRendererInternal);
 export default MemoizedMarkdownRenderer;
