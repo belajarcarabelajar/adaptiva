@@ -7,6 +7,7 @@ import {
   randomHex,
   randomToken,
   refundUserPoints,
+  timingSafeEqual,
   isEmailAllowed,
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
@@ -48,6 +49,28 @@ describe("buildSessionCookie", () => {
   it("should handle empty session ID", () => {
     const cookie = buildSessionCookie("", false);
     expect(cookie).toBe(`${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`);
+  });
+});
+
+describe("timingSafeEqual", () => {
+  it("should return true for identical strings", () => {
+    expect(timingSafeEqual("hello", "hello")).toBe(true);
+    expect(timingSafeEqual("", "")).toBe(true);
+  });
+
+  it("should return false for strings of different lengths", () => {
+    expect(timingSafeEqual("hello", "helloworld")).toBe(false);
+    expect(timingSafeEqual("hello", "")).toBe(false);
+  });
+
+  it("should return false for strings of same length but different content", () => {
+    expect(timingSafeEqual("hello", "hellx")).toBe(false);
+    expect(timingSafeEqual("abcde", "12345")).toBe(false);
+  });
+
+  it("should correctly compare unicode/special character strings", () => {
+    expect(timingSafeEqual("🔐secret", "🔐secret")).toBe(true);
+    expect(timingSafeEqual("🔐secret", "🔐secreX")).toBe(false);
   });
 });
 
