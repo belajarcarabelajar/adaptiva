@@ -235,6 +235,65 @@ describe("callback handler", () => {
     expect(html).toContain("window.location.replace(\"/\")"); // Sanitized to "/"
   });
 
+  it("should handle next parameter rejection for backslash protocol-relative URLs (open redirect bypass)", async () => {
+    const ctx = createMockContext("https://example.com/api/auth/callback?code=foo&state=valid&next=/\\evil.com");
+
+    mockEnv.SESSIONS.get = vi.fn().mockResolvedValue(JSON.stringify({ createdAt: Date.now() }));
+
+    (global.fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          access_token: "access",
+          id_token: "id",
+        }),
+      }) // exchangeCode
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          sub: "123",
+          email: "user@example.com",
+          email_verified: true,
+        }),
+      }); // fetchUserInfo
+
+    const res = await onRequestGet(ctx) as Response;
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("window.location.replace(\"/\")"); // Sanitized to "/"
+  });
+
+  it("should handle next parameter bypass attempts using path normalization (/.//evil.com)", async () => {
+    // A payload like "/.//evil.com" can bypass naive URL constructor parsing because
+    // the dummy origin remains localhost, but url.pathname becomes "//evil.com",
+    // which acts as a protocol-relative redirect when rendered.
+    const ctx = createMockContext("https://example.com/api/auth/callback?code=foo&state=valid&next=/.//evil.com");
+
+    mockEnv.SESSIONS.get = vi.fn().mockResolvedValue(JSON.stringify({ createdAt: Date.now() }));
+
+    (global.fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          access_token: "access",
+          id_token: "id",
+        }),
+      }) // exchangeCode
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          sub: "123",
+          email: "user@example.com",
+          email_verified: true,
+        }),
+      }); // fetchUserInfo
+
+    const res = await onRequestGet(ctx) as Response;
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("window.location.replace(\"/evil.com\")"); // Normalized safely to a single slash /evil.com
+  });
+
   it("should fallback to decoding id_token if fetchUserInfo fails but id_token is valid", async () => {
     const ctx = createMockContext("https://example.com/api/auth/callback?code=foo&state=valid");
 
