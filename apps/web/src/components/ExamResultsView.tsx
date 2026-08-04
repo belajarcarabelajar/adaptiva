@@ -3,6 +3,7 @@ import React from 'react';
 import { ExamAttempt, ExamQuestion } from '../types';
 import { Icons } from '../constants';
 import Accordion from './Accordion';
+import DetailedExplanationSection from './DetailedExplanationSection';
 import MemoizedMarkdownRenderer from './MarkdownRenderer';
 
 interface ExamResultsViewProps {
@@ -63,37 +64,16 @@ const ExamResultsView: React.FC<ExamResultsViewProps> = ({
             <h5 className="text-md md:text-lg font-semibold text-brand-blue dark:text-blue-400 mt-2 mb-1">Explanation:</h5>
             <MemoizedMarkdownRenderer content={q.explanation || "No explanation provided."} baseTextSize="text-sm md:text-base" />
 
-            <div className="mt-2 md:mt-3">
-              {q.isDetailedExplanationLoading ? (
-                <div className="flex items-center text-brand-blue dark:text-blue-400">
-                  <Icons.LoadingAnimatedIcon className="animate-spin h-4 w-4 md:h-5 md:h-5 text-brand-blue dark:text-blue-400"/> 
-                  <span className="ml-2 text-sm md:text-md">Loading more details...</span>
-                </div>
-              ) : q.detailedExplanation ? (
-                <Accordion 
-                    key={`detail-accordion-exam-${q.id}${q.detailedExplanation && !q.detailedExplanation.startsWith("Error:") ? '-success' : '-fail-or-pending'}`}
-                    title={<span className="text-md md:text-lg font-semibold text-brand-orange dark:text-orange-400">Further Details:</span>}
-                    startOpen={!!q.detailedExplanation && !q.isDetailedExplanationLoading && !q.detailedExplanation.startsWith("Error:")}
-                >
-                    <MemoizedMarkdownRenderer content={q.detailedExplanation} baseTextSize="text-sm md:text-base" />
-                     {q.detailedExplanation.includes("Failed to load detailed explanation (empty response).") && (
-                        <button
-                        onClick={() => onLoadDetailedExplanation(q.id)}
-                        className="mt-2 px-3 py-1.5 bg-brand-yellow hover:bg-yellow-600 text-brand-black font-semibold rounded-lg text-xs"
-                        >
-                        Regenerate Details
-                        </button>
-                    )}
-                </Accordion>
-              ) : (
-                <button
-                  onClick={() => onLoadDetailedExplanation(q.id)}
-                  className="px-3 py-1.5 md:px-4 md:py-2 bg-brand-orange hover:bg-[#D84315] dark:hover:bg-orange-600 text-brand-white text-xs md:text-sm font-semibold rounded-lg"
-                >
-                  Load More Details
-                </button>
-              )}
-            </div>
+            <DetailedExplanationSection
+                questionId={q.id}
+                isDetailedExplanationLoading={q.isDetailedExplanationLoading}
+                detailedExplanation={q.detailedExplanation}
+                onLoadDetailedExplanation={onLoadDetailedExplanation}
+                title={<span className="text-md md:text-lg font-semibold text-brand-orange dark:text-orange-400">Further Details:</span>}
+                accordionKeyPrefix="detail-accordion-exam"
+                baseTextSize="text-sm md:text-base"
+                buttonSizeClass="px-3 py-1.5 md:px-4 md:py-2 text-xs md:text-sm bg-brand-orange hover:bg-[#D84315] dark:hover:bg-orange-600 text-brand-white"
+            />
           </Accordion>
         ))}
       </div>
