@@ -30,7 +30,9 @@ interface PagesContext<E = unknown> {
   next?(input?: Request | string): Promise<Response>;
 }
 
-type PagesFunction<E = unknown> = (context: PagesContext<E>) => Response | Promise<Response>;
+type PagesFunction<E = unknown> = (
+  context: PagesContext<E>,
+) => Response | Promise<Response>;
 
 interface Env {
   GEMINI_API_KEY: string;
@@ -50,13 +52,23 @@ export const ACTION_POINT_COSTS: Record<string, number> = {
   default: 5,
 };
 
-import { getSession, deductUserPoints, refundUserPoints, type Env as AuthEnv } from "../auth/_shared";
+import {
+  getSession,
+  deductUserPoints,
+  refundUserPoints,
+  type Env as AuthEnv,
+} from "../auth/_shared";
 
 // Strip the /api/gemini prefix that triggered this Function.
 // `params.path` is the array of path segments AFTER the [[path]] wildcard.
-function buildUpstreamUrl(request: Request, params: PagesContext["params"]): string {
+function buildUpstreamUrl(
+  request: Request,
+  params: PagesContext["params"],
+): string {
   const base = UPSTREAM_BASE_DEFAULT.replace(/\/+$/, "");
-  const path = Array.isArray(params.path) ? params.path.join("/") : params.path ?? "";
+  const path = Array.isArray(params.path)
+    ? params.path.join("/")
+    : (params.path ?? "");
   const search = new URL(request.url).search;
   return `${base}/${path}${search}`;
 }
@@ -70,42 +82,42 @@ function buildUpstreamHeaders(request: Request, apiKey: string): Headers {
   return headers;
 }
 
-async function proxyRequest(request: Request, env: Env, params: PagesContext["params"]): Promise<Response> {
-  if (!env.GEMINI_API_KEY) {
-    return new Response(
-      JSON.stringify({ error: "GEMINI_API_KEY is not configured on this Pages project." }),
-      { status: 500, headers: { "content-type": "application/json" } }
-    );
-  }
-
-  // Determine point cost from x-adaptiva-action header
-  const action = request.headers.get("x-adaptiva-action") || "default";
-  const cost = ACTION_POINT_COSTS[action] ?? 5;
-
-  const pointResult = await deductUserPoints(request, env as unknown as AuthEnv, cost);
+async function processPointDeduction(request: Request, env: Env, cost: number) {
+  const pointResult = await deductUserPoints(
+    request,
+    env as unknown as AuthEnv,
+    cost,
+  );
   if (!pointResult.success) {
     if (!pointResult.session) {
-      return new Response(
-        JSON.stringify({ error: "unauthorized", message: "Sign in with Google required to use AI features." }),
-        { status: 401, headers: { "content-type": "application/json" } }
-      );
+      return {
+        response: new Response(
+          JSON.stringify({
+            error: "unauthorized",
+            message: "Sign in with Google required to use AI features.",
+          }),
+          { status: 401, headers: { "content-type": "application/json" } },
+        ),
+      };
     }
-    return new Response(
-      JSON.stringify({
-        error: "insufficient_points",
-        message: `Poin Anda tidak cukup (${pointResult.remainingPoints} Poin). Membutuhkan ${cost} Poin.`,
-        remainingPoints: pointResult.remainingPoints,
-        requiredPoints: cost,
-      }),
-      { status: 429, headers: { "content-type": "application/json" } }
-    );
+    return {
+      response: new Response(
+        JSON.stringify({
+          error: "insufficient_points",
+          message: `Poin Anda tidak cukup (${pointResult.remainingPoints} Poin). Membutuhkan ${cost} Poin.`,
+          remainingPoints: pointResult.remainingPoints,
+          requiredPoints: cost,
+        }),
+        { status: 429, headers: { "content-type": "application/json" } },
+      ),
+    };
   }
+  return { pointResult };
+}
 
-  const url = buildUpstreamUrl(request, params);
-  const headers = buildUpstreamHeaders(request, env.GEMINI_API_KEY);
-
-  // We must clone the body before any attempt because a ReadableStream can only
-  // be consumed once. We buffer it as ArrayBuffer so we can re-use it across retries.
+async function extractBodyBuffer(
+  request: Request,
+): Promise<ArrayBuffer | null> {
   let bodyBuffer: ArrayBuffer | null = null;
   if (request.body) {
     try {
@@ -114,9 +126,15 @@ async function proxyRequest(request: Request, env: Env, params: PagesContext["pa
       bodyBuffer = null;
     }
   }
+  return bodyBuffer;
+}
 
-  // Transient HTTP status codes that are safe to retry (Gemini 503 overload, 502 Bad Gateway, 529 quota)
-  // 429 (rate limit) is intentionally excluded: rapid retries worsen rate-limiting.
+async function executeWithRetries(
+  url: string,
+  method: string,
+  headers: Headers,
+  bodyBuffer: ArrayBuffer | null,
+) {
   const RETRYABLE_STATUSES = new Set([500, 502, 503, 529]);
   const MAX_UPSTREAM_RETRIES = 3;
   const UPSTREAM_RETRY_DELAY_MS = 1000;
@@ -126,7 +144,7 @@ async function proxyRequest(request: Request, env: Env, params: PagesContext["pa
 
   for (let attempt = 1; attempt <= MAX_UPSTREAM_RETRIES; attempt++) {
     const init: RequestInit = {
-      method: request.method,
+      method,
       headers,
       body: bodyBuffer ?? undefined,
       redirect: "manual",
@@ -136,11 +154,15 @@ async function proxyRequest(request: Request, env: Env, params: PagesContext["pa
       const res = await fetch(url, init);
 
       // If the response is retryable and we have more attempts left, retry after backoff.
-      if (!res.ok && RETRYABLE_STATUSES.has(res.status) && attempt < MAX_UPSTREAM_RETRIES) {
+      if (
+        !res.ok &&
+        RETRYABLE_STATUSES.has(res.status) &&
+        attempt < MAX_UPSTREAM_RETRIES
+      ) {
         // Drain the body so the connection can be reused.
         await res.body?.cancel();
         const waitMs = UPSTREAM_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-        await new Promise(resolve => setTimeout(resolve, waitMs));
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
         continue;
       }
 
@@ -151,57 +173,94 @@ async function proxyRequest(request: Request, env: Env, params: PagesContext["pa
       lastNetworkError = err;
       if (attempt < MAX_UPSTREAM_RETRIES) {
         const waitMs = UPSTREAM_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-        await new Promise(resolve => setTimeout(resolve, waitMs));
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
       }
     }
   }
 
-  // All attempts failed due to network error — refund and return.
-  if (!upstream) {
-    const refund = await refundUserPoints(request, env as unknown as AuthEnv, cost);
-    const updatedPoints = refund.success ? refund.remainingPoints : pointResult.remainingPoints + cost;
-    return new Response(
-      JSON.stringify({
-        error: "ai_upstream_network_error",
-        message: "Gagal terhubung ke layanan AI. Poin Anda telah dikembalikan.",
-        detail: String(lastNetworkError),
-      }),
-      // Use HTTP 400 so client-side callWithRetries does NOT misidentify this as 429/insufficient_points.
-      { status: 400, headers: { "content-type": "application/json", "x-adaptiva-points": String(updatedPoints) } }
-    );
-  }
+  return { upstream, lastNetworkError };
+}
 
-  // If Gemini API returned an HTTP error after all retries, refund points.
-  if (!upstream.ok) {
-    const refund = await refundUserPoints(request, env as unknown as AuthEnv, cost);
-    const updatedPoints = refund.success ? refund.remainingPoints : pointResult.remainingPoints + cost;
-    const resHeaders = new Headers(upstream.headers);
-    resHeaders.set("x-adaptiva-points", String(updatedPoints));
+async function handleNetworkErrorAndRefund(
+  request: Request,
+  env: Env,
+  cost: number,
+  currentRemainingPoints: number,
+  lastNetworkError: unknown,
+): Promise<Response> {
+  const refund = await refundUserPoints(
+    request,
+    env as unknown as AuthEnv,
+    cost,
+  );
+  const updatedPoints = refund.success
+    ? refund.remainingPoints
+    : currentRemainingPoints + cost;
+  return new Response(
+    JSON.stringify({
+      error: "ai_upstream_network_error",
+      message: "Gagal terhubung ke layanan AI. Poin Anda telah dikembalikan.",
+      detail: String(lastNetworkError),
+    }),
+    {
+      status: 400,
+      headers: {
+        "content-type": "application/json",
+        "x-adaptiva-points": String(updatedPoints),
+      },
+    },
+  );
+}
 
-    let errorDetail = "";
-    try {
-      const errJson = (await upstream.clone().json()) as { error?: { message?: string } } | null;
-      if (typeof errJson?.error?.message === "string") {
-        errorDetail = errJson.error.message;
-      }
-    } catch {
-      // Ignore JSON parse errors on non-200 responses
+async function handleUpstreamErrorAndRefund(
+  request: Request,
+  env: Env,
+  upstream: Response,
+  cost: number,
+  currentRemainingPoints: number,
+): Promise<Response> {
+  const refund = await refundUserPoints(
+    request,
+    env as unknown as AuthEnv,
+    cost,
+  );
+  const updatedPoints = refund.success
+    ? refund.remainingPoints
+    : currentRemainingPoints + cost;
+  const resHeaders = new Headers(upstream.headers);
+  resHeaders.set("x-adaptiva-points", String(updatedPoints));
+
+  let errorDetail = "";
+  try {
+    const errJson = (await upstream.clone().json()) as {
+      error?: { message?: string };
+    } | null;
+    if (typeof errJson?.error?.message === "string") {
+      errorDetail = errJson.error.message;
     }
-
-    return new Response(
-      JSON.stringify({
-        error: "ai_generation_failed",
-        message: errorDetail || `Layanan AI mengalami kendala (${upstream.status}). Poin Anda telah dikembalikan.`,
-        remainingPoints: updatedPoints,
-      }),
-      // Always use HTTP 400 so client-side callWithRetries never mistakes a Gemini rate-limit (429)
-      // for an insufficient_points error (which is our own 429).
-      { status: 400, headers: resHeaders }
-    );
+  } catch {
+    // Ignore JSON parse errors on non-200 responses
   }
 
+  return new Response(
+    JSON.stringify({
+      error: "ai_generation_failed",
+      message:
+        errorDetail ||
+        `Layanan AI mengalami kendala (${upstream.status}). Poin Anda telah dikembalikan.`,
+      remainingPoints: updatedPoints,
+    }),
+    { status: 400, headers: resHeaders },
+  );
+}
 
-  // Read body to inspect if candidates were blocked by safety or empty
+async function validateSafetyAndRefund(
+  request: Request,
+  env: Env,
+  upstream: Response,
+  cost: number,
+  currentRemainingPoints: number,
+): Promise<{ response?: Response; responseText: string }> {
   let responseText = "";
   try {
     responseText = await upstream.text();
@@ -216,8 +275,12 @@ async function proxyRequest(request: Request, env: Env, params: PagesContext["pa
       const jsonRes = JSON.parse(responseText);
       if (jsonRes.error) {
         isBlocked = true;
-        blockedReason = jsonRes.error.message || "Gagal membuat konten dengan AI.";
-      } else if (Array.isArray(jsonRes.candidates) && jsonRes.candidates.length > 0) {
+        blockedReason =
+          jsonRes.error.message || "Gagal membuat konten dengan AI.";
+      } else if (
+        Array.isArray(jsonRes.candidates) &&
+        jsonRes.candidates.length > 0
+      ) {
         const firstCandidate = jsonRes.candidates[0];
         if (
           firstCandidate.finishReason &&
@@ -234,38 +297,128 @@ async function proxyRequest(request: Request, env: Env, params: PagesContext["pa
   }
 
   if (isBlocked) {
-    const refund = await refundUserPoints(request, env as unknown as AuthEnv, cost);
-    const updatedPoints = refund.success ? refund.remainingPoints : pointResult.remainingPoints + cost;
+    const refund = await refundUserPoints(
+      request,
+      env as unknown as AuthEnv,
+      cost,
+    );
+    const updatedPoints = refund.success
+      ? refund.remainingPoints
+      : currentRemainingPoints + cost;
     const resHeaders = new Headers(upstream.headers);
     resHeaders.set("content-type", "application/json");
     resHeaders.set("x-adaptiva-points", String(updatedPoints));
 
+    return {
+      response: new Response(
+        JSON.stringify({
+          error: "ai_generation_blocked",
+          message:
+            blockedReason ||
+            "Konten AI tidak dapat dibuat. Poin Anda telah dikembalikan.",
+          remainingPoints: updatedPoints,
+        }),
+        { status: 400, headers: resHeaders },
+      ),
+      responseText,
+    };
+  }
+
+  return { responseText };
+}
+
+async function proxyRequest(
+  request: Request,
+  env: Env,
+  params: PagesContext["params"],
+): Promise<Response> {
+  if (!env.GEMINI_API_KEY) {
     return new Response(
       JSON.stringify({
-        error: "ai_generation_blocked",
-        message: blockedReason || "Konten AI tidak dapat dibuat. Poin Anda telah dikembalikan.",
-        remainingPoints: updatedPoints,
+        error: "GEMINI_API_KEY is not configured on this Pages project.",
       }),
-      { status: 400, headers: resHeaders }
+      { status: 500, headers: { "content-type": "application/json" } },
     );
+  }
+
+  // Determine point cost from x-adaptiva-action header
+  const action = request.headers.get("x-adaptiva-action") || "default";
+  const cost = ACTION_POINT_COSTS[action] ?? 5;
+
+  const deduction = await processPointDeduction(request, env, cost);
+  if (deduction.response) {
+    return deduction.response;
+  }
+  const pointResult = deduction.pointResult!;
+
+  const url = buildUpstreamUrl(request, params);
+  const headers = buildUpstreamHeaders(request, env.GEMINI_API_KEY);
+  const bodyBuffer = await extractBodyBuffer(request);
+
+  const { upstream, lastNetworkError } = await executeWithRetries(
+    url,
+    request.method,
+    headers,
+    bodyBuffer,
+  );
+
+  if (!upstream) {
+    return handleNetworkErrorAndRefund(
+      request,
+      env,
+      cost,
+      pointResult.remainingPoints,
+      lastNetworkError,
+    );
+  }
+
+  if (!upstream.ok) {
+    return handleUpstreamErrorAndRefund(
+      request,
+      env,
+      upstream,
+      cost,
+      pointResult.remainingPoints,
+    );
+  }
+
+  const safetyValidation = await validateSafetyAndRefund(
+    request,
+    env,
+    upstream,
+    cost,
+    pointResult.remainingPoints,
+  );
+  if (safetyValidation.response) {
+    return safetyValidation.response;
   }
 
   const resHeaders = new Headers(upstream.headers);
   resHeaders.set("x-adaptiva-points", String(pointResult.remainingPoints));
 
-  return new Response(responseText, {
+  return new Response(safetyValidation.responseText, {
     status: upstream.status,
     headers: resHeaders,
   });
 }
 
-function corsHeaders(request: Request, env?: Env, extra: Record<string, string> = {}): Headers {
+function corsHeaders(
+  request: Request,
+  env?: Env,
+  extra: Record<string, string> = {},
+): Headers {
   const headers = new Headers(extra);
   const origin = getAllowedOrigin(request, env as any);
   headers.set("Access-Control-Allow-Origin", origin);
   headers.set("Access-Control-Allow-Credentials", "true");
-  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, x-adaptiva-action, x-goog-api-key");
+  headers.set(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS",
+  );
+  headers.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, x-adaptiva-action, x-goog-api-key",
+  );
   headers.set("Access-Control-Expose-Headers", "x-adaptiva-points");
   return headers;
 }
@@ -280,24 +433,41 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
 
   try {
-    const res = await proxyRequest(context.request, context.env, context.params);
-    const headers = corsHeaders(context.request, context.env, Object.fromEntries(res.headers.entries()));
+    const res = await proxyRequest(
+      context.request,
+      context.env,
+      context.params,
+    );
+    const headers = corsHeaders(
+      context.request,
+      context.env,
+      Object.fromEntries(res.headers.entries()),
+    );
     return new Response(res.body, {
       status: res.status,
       headers,
     });
   } catch (err) {
-    const action = context.request.headers.get("x-adaptiva-action") || "default";
+    const action =
+      context.request.headers.get("x-adaptiva-action") || "default";
     const cost = ACTION_POINT_COSTS[action] ?? 5;
-    const refund = await refundUserPoints(context.request, context.env as unknown as AuthEnv, cost);
+    const refund = await refundUserPoints(
+      context.request,
+      context.env as unknown as AuthEnv,
+      cost,
+    );
     const message = err instanceof Error ? err.message : String(err);
     const headers = corsHeaders(context.request, context.env, {
       "content-type": "application/json",
       "x-adaptiva-points": String(refund.remainingPoints),
     });
     return new Response(
-      JSON.stringify({ error: "Proxy error", message: "Gagal memproses permintaan AI. Poin Anda telah dikembalikan.", detail: message }),
-      { status: 502, headers }
+      JSON.stringify({
+        error: "Proxy error",
+        message: "Gagal memproses permintaan AI. Poin Anda telah dikembalikan.",
+        detail: message,
+      }),
+      { status: 502, headers },
     );
   }
 };
