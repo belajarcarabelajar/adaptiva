@@ -42,6 +42,8 @@ import AuthModal from './components/AuthModal';
 import PointsBadge from './components/PointsBadge';
 import InsufficientPointsModal from './components/InsufficientPointsModal';
 import { useAuth } from './hooks/useAuth';
+import { useFlashcards } from './hooks/useFlashcards';
+import FlashcardView from './components/Flashcard/FlashcardView';
 import { z } from 'zod';
 
 
@@ -110,26 +112,28 @@ const App: React.FC = () => {
   const [isGeneratingExam, setIsGeneratingExam] = useState<boolean>(false); 
   // End Exam Feature State
 
-  // --- Flashcard Feature State ---
-  const [activeFlashcardModuleInfo, setActiveFlashcardModuleInfo] = useState<{ title: string, moduleMaterial: string } | null>(null);
-  const [flashcardDecks, setFlashcardDecks] = useState<Record<string, FlashcardDeck>>({}); // moduleTitle -> FlashcardDeck
-  const [currentFlashcardDeck, setCurrentFlashcardDeck] = useState<FlashcardDeck | null>(null);
-  const [flashcardSubView, setFlashcardSubView] = useState<FlashcardSubView>('daftar');
-  const [currentFlashcardIndexInStack, setCurrentFlashcardIndexInStack] = useState<number>(0);
-  const [isGeneratingFlashcards, setIsGeneratingFlashcards] = useState<boolean>(false);
-  const [showAddFlashcardModal, setShowAddFlashcardModal] = useState<boolean>(false);
-  const [flashcardFormState, setFlashcardFormState] = useState<{ term: string, definition: string }>({ term: '', definition: '' });
-  const [editingFlashcardId, setEditingFlashcardId] = useState<string | null>(null);
-  const [flippedFlashcardId, setFlippedFlashcardId] = useState<string | null>(null);
-  
-  // Matching Game State
-  const [flashcardMatchGameItems, setFlashcardMatchGameItems] = useState<FlashcardMatchItem[]>([]);
-  const [selectedMatchItemId, setSelectedMatchItemId] = useState<string | null>(null);
-  const [matchGameActive, setMatchGameActive] = useState<boolean>(false);
-  const [matchGameStartTime, setMatchGameStartTime] = useState<number | null>(null);
-  const [matchGameTimeElapsed, setMatchGameTimeElapsed] = useState<number>(0);
-  const matchGameTimerIntervalIdRef = useRef<number | null>(null);
-  // --- End Flashcard Feature State ---
+  // --- Flashcard Feature (delegated to useFlashcards hook) ---
+  const flashcards = useFlashcards(selectedHistoryItemId, setHistoryItems, setError);
+  const {
+    activeFlashcardModuleInfo, setActiveFlashcardModuleInfo,
+    flashcardDecks, setFlashcardDecks,
+    currentFlashcardDeck, setCurrentFlashcardDeck,
+    flashcardSubView, setFlashcardSubView,
+    currentFlashcardIndexInStack, setCurrentFlashcardIndexInStack,
+    isGeneratingFlashcards, setIsGeneratingFlashcards,
+    showAddFlashcardModal, setShowAddFlashcardModal,
+    flashcardFormState, setFlashcardFormState,
+    editingFlashcardId, setEditingFlashcardId,
+    flippedFlashcardId, setFlippedFlashcardId,
+    flashcardMatchGameItems, setFlashcardMatchGameItems,
+    selectedMatchItemId, setSelectedMatchItemId,
+    matchGameActive, setMatchGameActive,
+    matchGameStartTime, setMatchGameStartTime,
+    matchGameTimeElapsed, setMatchGameTimeElapsed,
+    matchGameTimerIntervalIdRef,
+    sortedStackCards,
+    flashcardStatusCounts,
+  } = flashcards;
 
   // --- Resources Tab State ---
   const [currentLearningResources, setCurrentLearningResources] = useState<LearningResource | null>(null);
@@ -1771,253 +1775,6 @@ const App: React.FC = () => {
   }, [handleLoadModuleDetails, selectedHistoryItemId, flashcardDecks, curriculum]);
 
 
-  const handleGenerateFlashcards = useCallback(async () => {
-    if (status !== 'authenticated' || !user) {
-      setIsAuthModalOpen(true);
-      return;
-    }
-    if ((user.points ?? 100) < 5) {
-      setPointsModalInfo({ required: 5, remaining: user.points ?? 0, action: "Generate Kartu Kilat" });
-      setIsPointsModalOpen(true);
-      return;
-    }
-    if (!activeFlashcardModuleInfo || !activeFlashcardModuleInfo.moduleMaterial || !selectedHistoryItemId) {
-        setError("Cannot generate flashcards: Active module information or learning session is missing.");
-        return;
-    }
-    setIsGeneratingFlashcards(true);
-    setError(null);
-
-    try {
-        const generatedItems = await generateFlashcardsFromMaterial(
-            activeFlashcardModuleInfo.title,
-            activeFlashcardModuleInfo.moduleMaterial,
-            targetLanguage,
-            25
-        );
-
-        if (generatedItems && generatedItems.length > 0) {
-            const newCards: Flashcard[] = generatedItems.map((item, index) => ({
-                id: `fc-${activeFlashcardModuleInfo.title.replace(/\s+/g, '-')}-${Date.now()}-${index}`,
-                term: item.term,
-                definition: item.definition,
-                status: 'learning',
-                lastReviewed: Date.now(),
-                nextReview: Date.now(), 
-                difficultyLevel: 'medium', 
-                moduleId: activeFlashcardModuleInfo.title,
-            }));
-
-            setFlashcardDecks(prevDecks => {
-                const updatedDeck: FlashcardDeck = {
-                    moduleId: activeFlashcardModuleInfo.title,
-                    moduleTitle: activeFlashcardModuleInfo.title,
-                    cards: [...(prevDecks[activeFlashcardModuleInfo.title]?.cards || []), ...newCards], 
-                };
-                const newDecks = { ...prevDecks, [activeFlashcardModuleInfo.title]: updatedDeck };
-                
-                setHistoryItems(prevHist => {
-                    const itemIndex = prevHist.findIndex(h => h.id === selectedHistoryItemId);
-                    if (itemIndex === -1) return prevHist;
-                    const newItems = [...prevHist];
-                    newItems[itemIndex] = { ...prevHist[itemIndex], flashcardDecks: newDecks };
-                    return newItems;
-                });
-                setCurrentFlashcardDeck(updatedDeck);
-                return newDecks;
-            });
-        } else {
-            setError("No flashcards were generated. The AI might not have found distinct terms or an issue occurred.");
-        }
-    } catch (err) {
-        console.error("Error generating flashcards:", err);
-        setError(formatAiError(err));
-    } finally {
-        setIsGeneratingFlashcards(false);
-        void refresh(); // Re-sync points (including refunds) after flashcard generation
-    }
-  }, [activeFlashcardModuleInfo, targetLanguage, selectedHistoryItemId, refresh]);
-
-  const handleOpenAddFlashcardModal = (cardToEdit?: Flashcard) => {
-    if (cardToEdit) {
-        setFlashcardFormState({ term: cardToEdit.term, definition: cardToEdit.definition });
-        setEditingFlashcardId(cardToEdit.id);
-    } else {
-        setFlashcardFormState({ term: '', definition: '' });
-        setEditingFlashcardId(null);
-    }
-    setShowAddFlashcardModal(true);
-  };
-
-  const handleSaveFlashcard = () => {
-    if (!currentFlashcardDeck || !flashcardFormState.term.trim() || !flashcardFormState.definition.trim() || !selectedHistoryItemId) return;
-
-    let updatedCards: Flashcard[];
-    if (editingFlashcardId) { 
-        updatedCards = currentFlashcardDeck.cards.map(card =>
-            card.id === editingFlashcardId
-                ? { ...card, term: flashcardFormState.term, definition: flashcardFormState.definition }
-                : card
-        );
-    } else { 
-        const newCard: Flashcard = {
-            id: `fc-${currentFlashcardDeck.moduleId.replace(/\s+/g, '-')}-${Date.now()}`,
-            term: flashcardFormState.term,
-            definition: flashcardFormState.definition,
-            status: 'learning',
-            lastReviewed: Date.now(),
-            nextReview: Date.now(),
-            difficultyLevel: 'medium',
-            moduleId: currentFlashcardDeck.moduleId,
-        };
-        updatedCards = [...currentFlashcardDeck.cards, newCard];
-    }
-
-    const updatedDeck = { ...currentFlashcardDeck, cards: updatedCards };
-    setFlashcardDecks(prev => {
-        const newDecks = { ...prev, [currentFlashcardDeck.moduleId]: updatedDeck };
-        setHistoryItems(prevHist => {
-            const itemIndex = prevHist.findIndex(h => h.id === selectedHistoryItemId);
-            if (itemIndex === -1) return prevHist;
-            const newItems = [...prevHist];
-            newItems[itemIndex] = { ...prevHist[itemIndex], flashcardDecks: newDecks };
-            return newItems;
-        });
-        return newDecks;
-    });
-    setCurrentFlashcardDeck(updatedDeck);
-    setShowAddFlashcardModal(false);
-    setEditingFlashcardId(null);
-    setFlashcardFormState({ term: '', definition: '' });
-  };
-  
-  const handleDeleteFlashcard = (cardId: string) => {
-    if (!currentFlashcardDeck || !selectedHistoryItemId) return;
-    const updatedCards = currentFlashcardDeck.cards.filter(card => card.id !== cardId);
-    const updatedDeck = { ...currentFlashcardDeck, cards: updatedCards };
-
-    setFlashcardDecks(prev => {
-        const newDecks = { ...prev, [currentFlashcardDeck.moduleId]: updatedDeck };
-         setHistoryItems(prevHist => {
-            const itemIndex = prevHist.findIndex(h => h.id === selectedHistoryItemId);
-            if (itemIndex === -1) return prevHist;
-            const newItems = [...prevHist];
-            newItems[itemIndex] = { ...prevHist[itemIndex], flashcardDecks: newDecks };
-            return newItems;
-        });
-        return newDecks;
-    });
-    setCurrentFlashcardDeck(updatedDeck);
-  };
-
-  const handleAssessFlashcard = (cardId: string, difficulty: FlashcardDifficulty) => {
-    if (!currentFlashcardDeck || !selectedHistoryItemId) return;
-
-    const now = Date.now();
-    let nextReviewDate = now;
-    let newStatus: FlashcardStatus = 'learning'; 
-
-    const currentCard = currentFlashcardDeck.cards.find(c => c.id === cardId);
-    if (!currentCard) return;
-
-    const oneDay = 1 * 24 * 60 * 60 * 1000;
-    const threeDays = 3 * 24 * 60 * 60 * 1000;
-    const fiveDays = 5 * 24 * 60 * 60 * 1000;
-    const sevenDays = 7 * 24 * 60 * 60 * 1000;
-    const tenDays = 10 * 24 * 60 * 60 * 1000;
-    const fourteenDays = 14 * 24 * 60 * 60 * 1000;
-    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-    const sixtyDays = 60 * 24 * 60 * 60 * 1000;
-
-    switch (currentCard.status) {
-        case 'learning':
-            if (difficulty === 'hard') {
-                newStatus = 'learning'; nextReviewDate = now + oneDay;
-            } else if (difficulty === 'medium') {
-                newStatus = 'reviewing'; nextReviewDate = now + threeDays;
-            } else { 
-                newStatus = 'known'; nextReviewDate = now + sevenDays;
-            }
-            break;
-        case 'reviewing':
-            if (difficulty === 'hard') {
-                newStatus = 'learning'; nextReviewDate = now + oneDay;
-            } else if (difficulty === 'medium') {
-                newStatus = 'reviewing'; nextReviewDate = now + fiveDays;
-            } else { 
-                newStatus = 'known'; nextReviewDate = now + tenDays;
-            }
-            break;
-        case 'known':
-            if (difficulty === 'hard') {
-                newStatus = 'reviewing'; nextReviewDate = now + threeDays;
-            } else if (difficulty === 'medium') {
-                newStatus = 'known'; nextReviewDate = now + fourteenDays;
-            } else { 
-                newStatus = 'mastered'; nextReviewDate = now + thirtyDays;
-            }
-            break;
-        case 'mastered':
-            if (difficulty === 'hard') {
-                newStatus = 'reviewing'; nextReviewDate = now + threeDays;
-            } else if (difficulty === 'medium') {
-                newStatus = 'known'; nextReviewDate = now + fourteenDays;
-            } else { 
-                newStatus = 'mastered'; nextReviewDate = now + sixtyDays;
-            }
-            break;
-        default: 
-            newStatus = 'learning'; nextReviewDate = now + oneDay;
-    }
-
-    const updatedCards = currentFlashcardDeck.cards.map(card =>
-        card.id === cardId
-            ? { ...card, status: newStatus, difficultyLevel: difficulty, lastReviewed: now, nextReview: nextReviewDate }
-            : card
-    );
-    const updatedDeck = { ...currentFlashcardDeck, cards: updatedCards };
-    
-    setFlashcardDecks(prev => {
-        const newDecks = { ...prev, [currentFlashcardDeck.moduleId]: updatedDeck };
-        setHistoryItems(prevHist => {
-            const itemIndex = prevHist.findIndex(h => h.id === selectedHistoryItemId);
-            if (itemIndex === -1) return prevHist;
-            const newItems = [...prevHist];
-            newItems[itemIndex] = { ...prevHist[itemIndex], flashcardDecks: newDecks };
-            return newItems;
-        });
-        return newDecks;
-    });
-    setCurrentFlashcardDeck(updatedDeck);
-    setFlippedFlashcardId(null); 
-
-    if (currentFlashcardDeck.cards.length > 0) {
-      setCurrentFlashcardIndexInStack(prev => (prev + 1) % currentFlashcardDeck.cards.length);
-    }
-  };
-  
-  const getSortedFlashcardsForStack = useCallback(() => {
-    if (!currentFlashcardDeck) return [];
-    const now = Date.now();
-    return [...currentFlashcardDeck.cards].sort((a, b) => {
-        const aIsDue = a.status === 'learning' || a.nextReview <= now;
-        const bIsDue = b.status === 'learning' || b.nextReview <= now;
-        if (aIsDue && !bIsDue) return -1;
-        if (!aIsDue && bIsDue) return 1;
-        return a.nextReview - b.nextReview; 
-    });
-  }, [currentFlashcardDeck]);
-  
-  const flashcardStatusCounts = useMemo(() => {
-    if (!currentFlashcardDeck) return { learning: 0, reviewing: 0, known: 0, mastered: 0 };
-    return currentFlashcardDeck.cards.reduce((acc, card) => {
-        acc[card.status] = (acc[card.status] || 0) + 1;
-        return acc;
-      }, {} as Record<FlashcardStatus, number>);
-  }, [currentFlashcardDeck]);
-
-  const sortedStackCards = useMemo(() => getSortedFlashcardsForStack(), [getSortedFlashcardsForStack]);
-
   const quizToShowInResultOrReview = useMemo(() => {
     const quizModuleTitleForDisplay = currentQuizModuleInfo?.title || reviewingQuiz?.moduleTitle;
     return reviewingQuiz || (quizAttemptCompleted && quiz ? {
@@ -2027,104 +1784,6 @@ const App: React.FC = () => {
     } as StoredQuizAttempt : null);
   }, [reviewingQuiz, quizAttemptCompleted, quiz, currentQuizModuleInfo?.title]);
 
-
-  const shuffleArray = <T,>(array: T[]): T[] => {
-    const newArray = [...array];
-    for (let i = newArray.length - 1; i > 0; i--) {
-      const randomBuffer = new Uint32Array(1);
-      window.crypto.getRandomValues(randomBuffer);
-      const j = Math.floor((randomBuffer[0] / (0xffffffff + 1)) * (i + 1));
-      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
-    }
-    return newArray;
-  };
-
-  const handleStartFlashcardMatchGame = useCallback(() => {
-    if (!currentFlashcardDeck || currentFlashcardDeck.cards.length === 0) {
-      setError("No flashcards available to start the matching game. Please add or generate some flashcards first.");
-      setMatchGameActive(false);
-      return;
-    }
-    setError(null);
-    setMatchGameActive(true);
-    setSelectedMatchItemId(null);
-    setMatchGameStartTime(Date.now());
-    setMatchGameTimeElapsed(0);
-
-    if (matchGameTimerIntervalIdRef.current) {
-      clearInterval(matchGameTimerIntervalIdRef.current);
-    }
-    matchGameTimerIntervalIdRef.current = window.setInterval(() => { 
-      setMatchGameTimeElapsed(prevTime => prevTime + 1);
-    }, 1000);
-
-    const gameItems: FlashcardMatchItem[] = [];
-    currentFlashcardDeck.cards.forEach(card => {
-      gameItems.push({
-        id: `term-${card.id}`,
-        flashcardId: card.id,
-        type: 'term',
-        text: card.term,
-        isVisible: true,
-      });
-      gameItems.push({
-        id: `def-${card.id}`,
-        flashcardId: card.id,
-        type: 'definition',
-        text: card.definition,
-        isVisible: true,
-      });
-    });
-    setFlashcardMatchGameItems(shuffleArray(gameItems));
-  }, [currentFlashcardDeck]);
-  
-  const handleFlashcardMatchAttempt = (itemId: string) => {
-    if (!matchGameActive) return;
-    const clickedItem = flashcardMatchGameItems.find(item => item.id === itemId);
-    if (!clickedItem || !clickedItem.isVisible) return;
-
-    if (!selectedMatchItemId) {
-      setSelectedMatchItemId(itemId);
-    } else {
-      if (selectedMatchItemId === itemId) { 
-        setSelectedMatchItemId(null);
-        return;
-      }
-      const firstItem = flashcardMatchGameItems.find(item => item.id === selectedMatchItemId);
-      if (!firstItem) { 
-        setSelectedMatchItemId(null);
-        return;
-      }
-
-      if (firstItem.flashcardId === clickedItem.flashcardId && firstItem.type !== clickedItem.type) {
-        setFlashcardMatchGameItems(prevItems =>
-          prevItems.map(item =>
-            item.id === firstItem.id || item.id === clickedItem.id
-              ? { ...item, isVisible: false }
-              : item
-          )
-        );
-        setSelectedMatchItemId(null);
-
-        if (flashcardMatchGameItems.every(item => !item.isVisible || item.id === firstItem.id || item.id === clickedItem.id)) {
-            setMatchGameActive(false);
-            if (matchGameTimerIntervalIdRef.current) {
-                clearInterval(matchGameTimerIntervalIdRef.current);
-                matchGameTimerIntervalIdRef.current = null;
-            }
-        }
-
-      } else {
-        setSelectedMatchItemId(null);
-      }
-    }
-  };
-  
-  const formatMatchGameTime = (totalSeconds: number) => {
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  };
 
   // Resource Fetching Logic
   const handleFetchResources = useCallback(async () => {
@@ -2954,7 +2613,18 @@ const App: React.FC = () => {
                          {error && curriculumSubTab === 'exam' && <p className={`mt-4 text-brand-red dark:text-red-400 text-center`}>{error}</p>}
                     </div>
                 )}
-                {curriculumSubTab === 'flashcards' && renderFlashcardInterface()}
+                {curriculumSubTab === 'flashcards' && (
+                  <FlashcardView
+                    flashcards={flashcards}
+                    setCurriculumSubTab={setCurriculumSubTab}
+                    curriculumSubTab={curriculumSubTab}
+                    targetLanguage={targetLanguage}
+                    setIsAuthModalOpen={setIsAuthModalOpen}
+                    setIsPointsModalOpen={setIsPointsModalOpen}
+                    setPointsModalInfo={setPointsModalInfo}
+                    error={error}
+                  />
+                )}
               </div>
             )}
 
@@ -3174,245 +2844,6 @@ const App: React.FC = () => {
         return <p className="dark:text-gray-300">Unknown view state.</p>;
     }
   };
-
-  const renderFlashcardInterface = () => {
-    const heading2Size = "text-xl sm:text-2xl md:text-2xl font-semibold text-brand-blue dark:text-blue-300";
-    const largeTextBase = "text-lg md:text-xl text-brand-black dark:text-gray-200"; 
-
-    if (!activeFlashcardModuleInfo) {
-        return (
-            <div className="text-center p-6 bg-brand-lightGray dark:bg-gray-800 rounded-lg shadow">
-                <Icons.LightBulb className="w-12 h-12 text-brand-yellow mx-auto mb-4" />
-                <h3 className={`${heading2Size} font-semibold text-brand-blue dark:text-blue-300 mb-3`}>Flashcards</h3>
-                <p className={`${largeTextBase} text-brand-black/80 dark:text-gray-300 mb-4`}>
-                    To manage or study flashcards, please select a module from the <button onClick={() => setCurriculumSubTab('material')} className="text-brand-orange dark:text-orange-400 underline hover:text-brand-red dark:hover:text-red-500">Material</button> tab and click "Manage Flashcards", or select a deck from <button onClick={() => setCurriculumSubTab('study_log')} className="text-brand-orange dark:text-orange-400 underline hover:text-brand-red dark:hover:text-red-500">Study Log</button>.
-                </p>
-                <p className={`${largeTextBase} text-brand-black/70 dark:text-gray-400`}>Ensure the module material is loaded before generating flashcards.</p>
-            </div>
-        );
-    }
-    
-    const flashcardSubTabs: { name: FlashcardSubView, label: string, icon: React.ReactNode }[] = [
-        { name: 'daftar', label: 'Daftar', icon: <Icons.QueueListIcon /> },
-        { name: 'tumpukan', label: 'Tumpukan', icon: <Icons.RectangleStackIcon /> },
-        { name: 'permainan', label: 'Permainan', icon: <Icons.PuzzlePieceIcon /> },
-    ];
-
-    
-    const currentCardInStack = sortedStackCards[currentFlashcardIndexInStack];
-    const gameIsCompleted = matchGameActive === false && flashcardMatchGameItems.length > 0 && flashcardMatchGameItems.every(item => !item.isVisible);
-
-
-    return (
-        <div className="p-4 md:p-6 bg-brand-white dark:bg-brand-black rounded-lg shadow-xl border border-brand-mediumGray dark:border-gray-700">
-            <h2 className="text-2xl md:text-3xl font-bold text-brand-blue dark:text-blue-300 mb-4">
-                Flashcards for: <span className="text-brand-orange dark:text-orange-400">{activeFlashcardModuleInfo.title}</span>
-            </h2>
-
-            <div className="mb-4 flex items-center space-x-2 border-b border-brand-mediumGray dark:border-gray-700 pb-3 overflow-x-auto whitespace-nowrap scrollbar-hide">
-                <button
-                    onClick={handleGenerateFlashcards}
-                    disabled={isGeneratingFlashcards}
-                    className="flex-shrink-0 mr-2 px-3 py-2 bg-brand-green hover:bg-green-700 text-brand-white text-sm font-semibold rounded-md flex items-center disabled:opacity-50"
-                >
-                    {isGeneratingFlashcards ? <Icons.LoadingAnimatedIcon className="w-4 h-4 mr-2" /> : <Icons.Sparkles className="w-4 h-4 mr-2" />}
-                    Generate AI Flashcards
-                </button>
-                {flashcardSubTabs.map(subTab => (
-                    <button
-                        key={subTab.name}
-                        onClick={() => {
-                            setFlashcardSubView(subTab.name);
-                            if (subTab.name === 'permainan' && currentFlashcardDeck && currentFlashcardDeck.cards.length > 0 && !matchGameActive && !gameIsCompleted) {
-                                // Game start is handled by its own button
-                            }
-                        }}
-                        className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-colors flex-shrink-0
-                            ${flashcardSubView === subTab.name 
-                                ? 'bg-brand-orange text-brand-white' 
-                                : 'bg-brand-lightGray dark:bg-gray-700 text-brand-blue dark:text-blue-300 hover:bg-brand-mediumGray dark:hover:bg-gray-600'}`}
-                    >
-                        {subTab.icon}
-                        <span>{subTab.label}</span>
-                    </button>
-                ))}
-            </div>
-            {error && curriculumSubTab === 'flashcards' && <p className={`my-2 text-brand-red dark:text-red-400 text-center`}>{error}</p>}
-
-            {flashcardSubView === 'daftar' && (
-                <div>
-                    <div className="flex justify-between items-center mb-3">
-                        <h3 className="text-xl font-semibold text-brand-blue dark:text-blue-300">Daftar Kartu ({currentFlashcardDeck?.cards?.length || 0})</h3>
-                        <button
-                            onClick={() => handleOpenAddFlashcardModal()}
-                            className="px-3 py-1.5 bg-brand-blue hover:bg-blue-700 text-brand-white text-sm font-semibold rounded-md flex items-center"
-                        >
-                            <Icons.PlusIcon className="w-4 h-4 mr-1" /> Tambah Kartu
-                        </button>
-                    </div>
-                    {currentFlashcardDeck && currentFlashcardDeck.cards.length > 0 ? (
-                        <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-brand-mediumGray dark:scrollbar-thumb-gray-600">
-                            {currentFlashcardDeck.cards.map(card => (
-                                <div key={card.id} className="p-3 bg-brand-lightGray dark:bg-gray-700 rounded-md shadow border border-brand-mediumGray dark:border-gray-600">
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <p className="font-semibold text-brand-orange dark:text-orange-400">{card.term}</p>
-                                            <p className="text-sm text-brand-black/80 dark:text-gray-300">{card.definition}</p>
-                                        </div>
-                                        <div className="flex space-x-1.5 flex-shrink-0">
-                                            <button onClick={() => handleOpenAddFlashcardModal(card)} className="p-1.5 text-brand-blue hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200" title="Edit"><Icons.PencilIcon /></button>
-                                            <button onClick={() => handleDeleteFlashcard(card.id)} className="p-1.5 text-brand-red hover:text-red-700 dark:text-red-400 dark:hover:text-red-200" title="Delete"><Icons.TrashIcon /></button>
-                                        </div>
-                                    </div>
-                                     <p className="text-xs mt-1 text-brand-black/60 dark:text-gray-500">Status: {card.status}, Difficulty: {card.difficultyLevel}</p>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="text-brand-black/70 dark:text-gray-400">No flashcards in this deck yet. Add some manually or generate them!</p>
-                    )}
-                </div>
-            )}
-
-            {flashcardSubView === 'tumpukan' && (
-                <div>
-                    <div className="flex justify-around mb-4 text-center text-sm">
-                        <div><span className="font-bold text-brand-blue dark:text-blue-400">{flashcardStatusCounts.learning || 0}</span> Belajar</div>
-                        <div><span className="font-bold text-brand-orange dark:text-orange-400">{flashcardStatusCounts.reviewing || 0}</span> Mengulang</div>
-                        <div><span className="font-bold text-brand-yellow dark:text-yellow-400">{flashcardStatusCounts.known || 0}</span> Diketahui</div>
-                        <div><span className="font-bold text-brand-green dark:text-green-400">{flashcardStatusCounts.mastered || 0}</span> Dikuasai</div>
-                    </div>
-                    {currentCardInStack ? (
-                        <div 
-                            className="p-4 md:p-6 bg-brand-lightGray dark:bg-gray-700 rounded-lg shadow-lg min-h-[200px] flex flex-col justify-center items-center text-center relative cursor-pointer hover:bg-brand-mediumGray dark:hover:bg-gray-600 transition-colors duration-150"
-                            onClick={() => setFlippedFlashcardId(prev => prev === currentCardInStack.id ? null : currentCardInStack.id)}
-                            role="button"
-                            tabIndex={0}
-                            aria-pressed={flippedFlashcardId === currentCardInStack.id}
-                            aria-label={`Flashcard: ${flippedFlashcardId === currentCardInStack.id ? 'Showing definition for' : 'Showing term'} ${currentCardInStack.term}. Click to flip.`}
-                        >
-                            <p className="text-xl md:text-2xl font-semibold text-brand-black dark:text-gray-100 mb-4 select-none">
-                                {flippedFlashcardId === currentCardInStack.id ? currentCardInStack.definition : currentCardInStack.term}
-                            </p>
-                            
-                            {flippedFlashcardId === currentCardInStack.id && (
-                                <div className="mt-6 flex justify-around w-full max-w-xs">
-                                    <button onClick={(e) => { e.stopPropagation(); handleAssessFlashcard(currentCardInStack.id, 'hard');}} className="p-3 rounded-full hover:bg-brand-red/20 text-brand-red dark:text-red-400" title="Sulit/Tidak Paham"><Icons.FaceFrownIcon className="w-8 h-8" /></button>
-                                    <button onClick={(e) => { e.stopPropagation(); handleAssessFlashcard(currentCardInStack.id, 'medium');}} className="p-3 rounded-full hover:bg-brand-yellow/20 text-brand-yellow dark:text-yellow-400" title="Cukup Paham"><Icons.FaceMehIcon className="w-8 h-8" /></button>
-                                    <button onClick={(e) => { e.stopPropagation(); handleAssessFlashcard(currentCardInStack.id, 'easy');}} className="p-3 rounded-full hover:bg-brand-green/20 text-brand-green dark:text-green-400" title="Mudah/Sudah Paham"><Icons.FaceSmileIcon className="w-8 h-8" /></button>
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                         <p className="text-brand-black/70 dark:text-gray-400 text-center py-10">No cards due for review or in learning stack. Add more cards or wait for scheduled reviews!</p>
-                    )}
-                     {currentFlashcardDeck && currentFlashcardDeck.cards.length > 0 && sortedStackCards.length > 0 && (
-                        <div className="mt-4 flex justify-between">
-                            <button 
-                                onClick={() => setCurrentFlashcardIndexInStack(prev => (prev - 1 + sortedStackCards.length) % sortedStackCards.length)} 
-                                className="px-4 py-2 bg-brand-blue text-brand-white rounded-md text-sm font-semibold"
-                                disabled={sortedStackCards.length <= 1}
-                            >
-                                Previous
-                            </button>
-                             <span className="text-sm text-brand-black/70 dark:text-gray-400 self-center">
-                                Card {currentFlashcardIndexInStack + 1} of {sortedStackCards.length} (Sorted for Review)
-                            </span>
-                            <button 
-                                onClick={() => setCurrentFlashcardIndexInStack(prev => (prev + 1) % sortedStackCards.length)} 
-                                className="px-4 py-2 bg-brand-blue text-brand-white rounded-md text-sm font-semibold"
-                                disabled={sortedStackCards.length <= 1}
-                            >
-                                Next
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {flashcardSubView === 'permainan' && (
-                <div>
-                    <h3 className="text-xl font-semibold text-brand-blue dark:text-blue-300 mb-3">Permainan Pencocokan</h3>
-                    {!matchGameActive && !gameIsCompleted && (
-                        <>
-                            <p className="text-brand-black/70 dark:text-gray-400 mb-4">Cocokkan istilah dengan definisinya. Klik "Mulai Permainan" untuk memulai.</p>
-                            <button
-                                onClick={handleStartFlashcardMatchGame}
-                                disabled={!currentFlashcardDeck || currentFlashcardDeck.cards.length < 2} 
-                                className="px-4 py-2 bg-brand-green hover:bg-green-700 text-brand-white font-semibold rounded-md disabled:opacity-50"
-                            >
-                                Mulai Permainan
-                            </button>
-                            {(!currentFlashcardDeck || currentFlashcardDeck.cards.length < 2) && <p className="text-xs text-brand-red dark:text-red-400 mt-1">Butuh minimal 2 kartu untuk bermain.</p>}
-                        </>
-                    )}
-                     {error && flashcardSubView === 'permainan' && <p className={`my-2 text-brand-red dark:text-red-400 text-center`}>{error}</p>}
-
-                    {matchGameActive && (
-                        <div className="text-center mb-2">
-                            <p className="text-lg font-semibold text-brand-orange dark:text-orange-400">Waktu: {formatMatchGameTime(matchGameTimeElapsed)}</p>
-                        </div>
-                    )}
-
-                    {gameIsCompleted && (
-                         <div className="text-center p-4 bg-brand-green/10 dark:bg-green-900/30 rounded-md">
-                            <Icons.CheckCircle className="w-10 h-10 text-brand-green mx-auto mb-2" />
-                            <p className="text-xl font-semibold text-brand-green dark:text-green-300">Selamat! Semua pasangan berhasil dicocokkan!</p>
-                            <p className="text-md text-brand-black/80 dark:text-gray-300">Waktu Pengerjaan: {formatMatchGameTime(matchGameTimeElapsed)}</p>
-                            <button 
-                                onClick={handleStartFlashcardMatchGame} 
-                                className="mt-3 px-4 py-2 bg-brand-orange hover:bg-orange-700 text-brand-white font-semibold rounded-md"
-                            >
-                                Main Lagi
-                            </button>
-                        </div>
-                    )}
-
-                    {matchGameActive && !gameIsCompleted && (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 md:gap-3">
-                            {flashcardMatchGameItems.map(item => item.isVisible && (
-                                <button
-                                    key={item.id}
-                                    onClick={() => handleFlashcardMatchAttempt(item.id)}
-                                    className={`p-3 min-h-[80px] md:min-h-[100px] flex items-center justify-center text-center text-sm md:text-base rounded-md border-2 transition-all duration-150
-                                        ${selectedMatchItemId === item.id 
-                                            ? 'bg-brand-yellow/30 dark:bg-yellow-600/50 border-brand-yellow dark:border-yellow-400 shadow-lg scale-105' 
-                                            : 'bg-brand-lightGray dark:bg-gray-700 border-brand-mediumGray dark:border-gray-600 hover:border-brand-blue dark:hover:border-blue-500 hover:shadow-md'}
-                                        text-brand-black dark:text-gray-100`}
-                                >
-                                    {item.text}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
-            {showAddFlashcardModal && currentFlashcardDeck && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-brand-white dark:bg-brand-black p-5 rounded-lg shadow-xl w-full max-w-md border border-brand-mediumGray dark:border-gray-700">
-                        <h3 className="text-xl font-semibold text-brand-blue dark:text-blue-300 mb-4">{editingFlashcardId ? 'Edit Kartu' : 'Tambah Kartu Baru'}</h3>
-                        <div className="space-y-3">
-                            <div>
-                                <label htmlFor="fc-term" className="block text-sm font-medium text-brand-blue dark:text-blue-300">Istilah/Pertanyaan</label>
-                                <input type="text" id="fc-term" value={flashcardFormState.term} onChange={e => setFlashcardFormState(s => ({...s, term: e.target.value}))} className="mt-1 w-full p-2 border border-brand-mediumGray dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-gray-100" />
-                            </div>
-                            <div>
-                                <label htmlFor="fc-definition" className="block text-sm font-medium text-brand-blue dark:text-blue-300">Definisi/Jawaban</label>
-                                <textarea id="fc-definition" value={flashcardFormState.definition} onChange={e => setFlashcardFormState(s => ({...s, definition: e.target.value}))} rows={3} className="mt-1 w-full p-2 border border-brand-mediumGray dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-gray-100"></textarea>
-                            </div>
-                        </div>
-                        <div className="mt-5 flex justify-end space-x-2">
-                            <button onClick={() => setShowAddFlashcardModal(false)} className="px-3 py-1.5 text-sm font-medium text-brand-black/80 dark:text-gray-300 bg-brand-lightGray dark:bg-gray-600 hover:bg-brand-mediumGray dark:hover:bg-gray-500 rounded-md">Batal</button>
-                            <button onClick={handleSaveFlashcard} className="px-3 py-1.5 text-sm font-medium text-brand-white bg-brand-green hover:bg-green-700 rounded-md">Simpan</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-  };
-
-
   return (
     <div className="min-h-screen md:h-screen md:w-screen md:overflow-hidden bg-brand-white text-brand-black dark:bg-brand-black dark:text-gray-100 flex flex-col md:flex-row transition-colors duration-300">
         <HistorySidebar 
