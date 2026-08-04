@@ -3,6 +3,7 @@ import type { Env } from "./_shared";
 import {
   buildClearCookie,
   consumeState,
+  randomHex,
   randomToken,
   refundUserPoints,
   isEmailAllowed,
@@ -19,6 +20,32 @@ describe("buildClearCookie", () => {
   it("generates a clear cookie string with Secure flag when secure is true", () => {
     const result = buildClearCookie(true);
     expect(result).toBe("adaptiva_sess=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure");
+  });
+});
+
+describe("randomHex", () => {
+  it("should generate a 64-character string by default (32 bytes)", () => {
+    const hex = randomHex();
+    expect(hex.length).toBe(64);
+  });
+
+  it("should generate the correct length for a custom byte length", () => {
+    const hex16 = randomHex(16);
+    expect(hex16.length).toBe(32);
+
+    const hex8 = randomHex(8);
+    expect(hex8.length).toBe(16);
+  });
+
+  it("should contain only valid lowercase hexadecimal characters", () => {
+    const hex = randomHex();
+    expect(hex).toMatch(/^[0-9a-f]+$/);
+  });
+
+  it("should return cryptographically random and unique values", () => {
+    const hex1 = randomHex();
+    const hex2 = randomHex();
+    expect(hex1).not.toBe(hex2);
   });
 });
 
