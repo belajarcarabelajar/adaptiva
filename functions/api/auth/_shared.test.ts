@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildClearCookie,
+  randomToken,
   refundUserPoints,
   type Env,
   SESSION_COOKIE,
@@ -16,6 +17,35 @@ describe("buildClearCookie", () => {
   it("generates a clear cookie string with Secure flag when secure is true", () => {
     const result = buildClearCookie(true);
     expect(result).toBe("adaptiva_sess=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure");
+  });
+});
+
+describe("randomToken", () => {
+  it("should generate a random string of the correct length", () => {
+    const token = randomToken(32);
+    // 32 bytes = 43 chars in base64url (no padding)
+    expect(token.length).toBe(43);
+  });
+
+  it("should use a default length of 32 bytes", () => {
+    const token = randomToken();
+    expect(token.length).toBe(43);
+  });
+
+  it("should only contain URL-safe base64 characters", () => {
+    const token = randomToken(64);
+    // base64url allows A-Z, a-z, 0-9, -, _
+    // No padding = no trailing '='
+    expect(token).toMatch(/^[A-Za-z0-9\-_]+$/);
+    expect(token).not.toContain("+");
+    expect(token).not.toContain("/");
+    expect(token).not.toContain("=");
+  });
+
+  it("should generate unique tokens", () => {
+    const token1 = randomToken(32);
+    const token2 = randomToken(32);
+    expect(token1).not.toEqual(token2);
   });
 });
 
