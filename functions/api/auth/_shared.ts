@@ -22,7 +22,11 @@ type PagesFunction<E = unknown> = (
 
 interface KVNamespace {
   get(key: string): Promise<string | null>;
-  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  put(
+    key: string,
+    value: string,
+    options?: { expirationTtl?: number },
+  ): Promise<void>;
   delete(key: string): Promise<void>;
 }
 
@@ -77,15 +81,28 @@ export const DEFAULT_INITIAL_POINTS = 100;
 
 // --- Crypto helpers ---
 
+const hexTable = new Array(256);
+for (let i = 0; i < 256; i++) {
+  hexTable[i] = i.toString(16).padStart(2, "0");
+}
+
 function bytesToHex(bytes: Uint8Array): string {
-  let s = "";
-  for (const b of bytes) s += b.toString(16).padStart(2, "0");
-  return s;
+  const out = new Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) {
+    out[i] = hexTable[bytes[i]];
+  }
+  return out.join("");
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    bin += String.fromCharCode.apply(
+      null,
+      bytes.subarray(i, i + chunkSize) as unknown as number[],
+    );
+  }
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
@@ -153,8 +170,8 @@ export function buildClearCookie(secure: boolean): string {
 
 // --- URL helpers ---
 
-export function getOrigin(request: Request, env: Env): string {
-  if (env.AUTH_BASE_URL) return env.AUTH_BASE_URL.replace(/\/+$/, "");
+export function getOrigin(request: Request, env?: Env): string {
+  if (env?.AUTH_BASE_URL) return env.AUTH_BASE_URL.replace(/\/+$/, "");
   return new URL(request.url).origin;
 }
 
@@ -174,13 +191,17 @@ export function getAllowedOrigin(request: Request): string {
   return fallback;
 }
 
-export function isHttps(request: Request, env: Env): boolean {
-  if (env.AUTH_BASE_URL) return getOrigin(request, env).startsWith("https://");
-  const proto = request.headers.get("x-forwarded-proto") || request.headers.get("cf-visitor");
+export function isHttps(request: Request, env?: Env): boolean {
+  if (env?.AUTH_BASE_URL) return getOrigin(request, env).startsWith("https://");
+  const proto =
+    request.headers.get("x-forwarded-proto") ||
+    request.headers.get("cf-visitor");
   if (proto && proto.includes("https")) return true;
   const url = new URL(request.url);
   if (url.protocol === "https:") return true;
-  return !url.hostname.includes("localhost") && !url.hostname.includes("127.0.0.1");
+  return (
+    !url.hostname.includes("localhost") && !url.hostname.includes("127.0.0.1")
+  );
 }
 
 // --- Session helpers ---
@@ -207,7 +228,10 @@ export async function getSession(
   }
 }
 
-export async function createSession(env: Env, session: Session): Promise<string> {
+export async function createSession(
+  env: Env,
+  session: Session,
+): Promise<string> {
   const sid = randomToken(32);
   const newSession: Session = {
     ...session,
@@ -223,10 +247,15 @@ export async function deductUserPoints(
   request: Request,
   env: Env,
   cost: number,
-): Promise<{ success: boolean; remainingPoints: number; session: Session | null }> {
+): Promise<{
+  success: boolean;
+  remainingPoints: number;
+  session: Session | null;
+}> {
   const cookies = parseCookies(request);
   const sid = cookies[SESSION_COOKIE];
-  if (!sid || !env.SESSIONS) return { success: false, remainingPoints: 0, session: null };
+  if (!sid || !env.SESSIONS)
+    return { success: false, remainingPoints: 0, session: null };
   const raw = await env.SESSIONS.get(`sess:${sid}`);
   if (!raw) return { success: false, remainingPoints: 0, session: null };
   try {
@@ -374,7 +403,9 @@ export function decodeIdTokenUnsafe(idToken: string): GoogleUserInfo {
   return JSON.parse(json) as GoogleUserInfo;
 }
 
-export async function fetchUserInfo(accessToken: string): Promise<GoogleUserInfo> {
+export async function fetchUserInfo(
+  accessToken: string,
+): Promise<GoogleUserInfo> {
   const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -385,7 +416,10 @@ export async function fetchUserInfo(accessToken: string): Promise<GoogleUserInfo
 export function isEmailAllowed(env: Env, email: string): boolean {
   const list = env.ALLOWED_EMAIL_DOMAINS?.trim();
   if (!list) return true;
-  const allowed = list.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
+  const allowed = list
+    .split(",")
+    .map((d) => d.trim().toLowerCase())
+    .filter(Boolean);
   if (allowed.length === 0) return true;
   const domain = email.split("@")[1]?.toLowerCase() ?? "";
   return allowed.includes(domain);
@@ -393,7 +427,12 @@ export function isEmailAllowed(env: Env, email: string): boolean {
 
 // --- Response helpers ---
 
-export function jsonResponse(request: Request, body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
+export function jsonResponse(
+  request: Request,
+  body: unknown,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+): Response {
   const origin = getAllowedOrigin(request);
   const headers = new Headers({
     "content-type": "application/json",
@@ -404,7 +443,11 @@ export function jsonResponse(request: Request, body: unknown, status = 200, extr
   return new Response(JSON.stringify(body), { status, headers });
 }
 
-export function redirectResponse(location: string, status = 302, extraHeaders: Record<string, string> = {}): Response {
+export function redirectResponse(
+  location: string,
+  status = 302,
+  extraHeaders: Record<string, string> = {},
+): Response {
   const headers = new Headers();
   headers.set("Location", location);
   for (const [k, v] of Object.entries(extraHeaders)) {
