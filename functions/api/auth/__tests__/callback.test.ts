@@ -2,13 +2,6 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { onRequestGet } from "../callback";
 import type { Env } from "../_shared";
 
-// Mock the shared module since testing it entirely via `fetch` mocking
-// and `SESSIONS` mocking can be brittle when `exchangeCode` and `fetchUserInfo`
-// use `fetch` natively. However, wait, if we mock global.fetch, it's fine.
-// The task prefers sticking to normal conventions. I will mock global.fetch.
-
-// Let's first mock `global.fetch` and `crypto.getRandomValues`
-// if they are used, wait, let's just mock `fetch`.
 const originalFetch = global.fetch;
 
 describe("callback handler", () => {
