@@ -24,11 +24,31 @@ import {
 const SAFE_NEXT_PREFIX = "/";
 
 function safeNext(raw: string | null): string {
-  if (!raw) return "/";
-  // Reject protocol-relative and absolute URLs; only allow same-origin paths.
-  if (raw.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(raw)) return "/";
-  if (!raw.startsWith(SAFE_NEXT_PREFIX)) return "/";
-  return raw;
+  if (!raw) return SAFE_NEXT_PREFIX;
+  // Must start with a forward slash to be a relative path
+  if (!raw.startsWith(SAFE_NEXT_PREFIX)) return SAFE_NEXT_PREFIX;
+
+  try {
+    // Leverage URL constructor to safely parse the intent.
+    // By providing a dummy origin, paths are resolved against it.
+    // If the raw string is absolute (e.g. https://evil.com) or
+    // protocol-relative (e.g. //evil.com or /\\evil.com), the resulting
+    // origin will differ from the dummy origin.
+    const url = new URL(raw, "http://localhost");
+    if (url.origin !== "http://localhost") {
+      return SAFE_NEXT_PREFIX;
+    }
+
+    // Ensure the path strictly starts with a single slash to prevent bypasses
+    // where url.pathname normalizes to something like "//evil.com"
+    // (e.g., from raw input "/.//evil.com").
+    const path = url.pathname.replace(/^\/+/, SAFE_NEXT_PREFIX);
+
+    // Return the normalized path, search, and hash components
+    return path + url.search + url.hash;
+  } catch {
+    return SAFE_NEXT_PREFIX;
+  }
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
