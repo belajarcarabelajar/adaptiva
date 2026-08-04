@@ -6,6 +6,7 @@ import {
   consumeState,
   decodeIdTokenUnsafe,
   getOrigin,
+  getSession,
   isHttps,
   jsonResponse,
   redirectResponse,
@@ -55,6 +56,68 @@ describe("buildSessionCookie", () => {
   it("should handle empty session ID", () => {
     const cookie = buildSessionCookie("", false);
     expect(cookie).toBe(`${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`);
+  });
+});
+
+describe("getSession", () => {
+  it("returns null for invalid JSON in KV store", async () => {
+    const mockRequest = new Request("https://example.com", {
+      headers: new Headers({
+        cookie: `${SESSION_COOKIE}=invalid_json_sid`,
+      }),
+    });
+
+    const mockEnv = {
+      SESSIONS: {
+        get: vi.fn(async (key: string) => {
+          if (key === "sess:invalid_json_sid") {
+            return "invalid { json ] string";
+          }
+          return null;
+        }),
+        put: vi.fn(async () => {}),
+        delete: vi.fn(async () => {}),
+      },
+    };
+
+    const session = await getSession(mockRequest, mockEnv as any);
+    expect(session).toBeNull();
+    expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("sess:invalid_json_sid");
+  });
+
+  it("returns session object for valid JSON in KV store", async () => {
+    const validSession = {
+      userId: "user-123",
+      email: "test@example.com",
+      name: "Test User",
+      accessToken: "access_123",
+      expiresAt: 1234567890,
+      createdAt: 1234567000,
+      points: 50,
+    };
+
+    const mockRequest = new Request("https://example.com", {
+      headers: new Headers({
+        cookie: `${SESSION_COOKIE}=valid_sid`,
+      }),
+    });
+
+    const mockEnv = {
+      SESSIONS: {
+        get: vi.fn(async (key: string) => {
+          if (key === "sess:valid_sid") {
+            return JSON.stringify(validSession);
+          }
+          return null;
+        }),
+        put: vi.fn(async () => {}),
+        delete: vi.fn(async () => {}),
+      },
+    };
+
+    const session = await getSession(mockRequest, mockEnv as any);
+    expect(session).toEqual(validSession);
+    expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("sess:valid_sid");
   });
 });
 
