@@ -1,5 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
-import { refundUserPoints, type Env, SESSION_COOKIE, DEFAULT_INITIAL_POINTS } from "./_shared";
+import {
+  buildClearCookie,
+  refundUserPoints,
+  type Env,
+  SESSION_COOKIE,
+  DEFAULT_INITIAL_POINTS,
+} from "./_shared";
+
+describe("buildClearCookie", () => {
+  it("generates a clear cookie string without Secure flag when secure is false", () => {
+    const result = buildClearCookie(false);
+    expect(result).toBe("adaptiva_sess=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+  });
+
+  it("generates a clear cookie string with Secure flag when secure is true", () => {
+    const result = buildClearCookie(true);
+    expect(result).toBe("adaptiva_sess=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure");
+  });
+});
 
 describe("refundUserPoints", () => {
   it("should refund points successfully", async () => {
