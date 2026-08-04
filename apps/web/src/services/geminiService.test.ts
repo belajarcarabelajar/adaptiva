@@ -277,6 +277,11 @@ describe('generateFlashcardsFromMaterial', () => {
     const result = await generateFlashcardsFromMaterial('React', '');
     expect(result).toBeNull();
   });
+
+  it('should return null for whitespace-only material', async () => {
+    const result = await generateFlashcardsFromMaterial('React', '   \n \t  ');
+    expect(result).toBeNull();
+  });
 });
 
 describe('fetchLearningResources and startChatSession', () => {
