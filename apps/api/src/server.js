@@ -33,11 +33,6 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
-      return callback(null, true);
-    }
-
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
@@ -46,7 +41,9 @@ const corsOptions = {
   }
 };
 
-app.use(cors(corsOptions));
+// We only want CORS applied to API routes to avoid blocking static file serving
+// which doesn't provide an Origin header.
+app.use('/api', cors(corsOptions));
 
 app.use(
   '/api/gemini',
