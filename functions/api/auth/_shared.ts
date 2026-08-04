@@ -87,11 +87,11 @@ for (let i = 0; i < 256; i++) {
 }
 
 function bytesToHex(bytes: Uint8Array): string {
-  const out = new Array(bytes.length);
+  let out = "";
   for (let i = 0; i < bytes.length; i++) {
-    out[i] = hexTable[bytes[i]];
+    out += hexTable[bytes[i]];
   }
-  return out.join("");
+  return out;
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
