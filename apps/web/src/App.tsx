@@ -637,11 +637,30 @@ const App: React.FC = () => {
       curriculumOutlineData = await generateInitialCurriculumOutline(submittedTopic, submittedTargetLanguage);
       if (!curriculumOutlineData) throw new Error("Failed to generate curriculum outline.");
       
-      setLoadingStepMessage("Compiling your 7-day accelerated learning plan...");
+      setLoadingStepMessage("Compiling your 7-day accelerated learning plan & fetching resources...");
       const moduleTitles = curriculumOutlineData.modules.map(module => module.title);
-      planData = await generateSevenDayPlan(submittedTopic, curriculumOutlineData.syllabus, moduleTitles, submittedTargetLanguage); 
+
+      const planPromise = generateSevenDayPlan(submittedTopic, curriculumOutlineData.syllabus, moduleTitles, submittedTargetLanguage);
+      const resourcesPromise = fetchLearningResources(submittedTopic, submittedTargetLanguage).catch(resErr => {
+        console.warn("Failed to fetch learning resources during initial setup, but continuing:", resErr);
+        setFetchResourcesError(formatAiError(resErr));
+        return undefined;
+      });
+
+      const [generatedPlan, resourcesResult] = await Promise.all([planPromise, resourcesPromise]);
+
+      planData = generatedPlan;
       if (!planData) throw new Error("Failed to generate 7-day plan.");
       
+      if (resourcesResult === undefined) {
+        fetchedResources = null;
+      } else if (resourcesResult === null) {
+        setFetchResourcesError("Sumber belajar tidak ditemukan untuk topik ini.");
+        fetchedResources = null;
+      } else {
+        fetchedResources = resourcesResult;
+      }
+
       setLoadingStepMessage("Initializing your AI tutor...");
       const langNameLower = submittedTargetLanguage.toLowerCase();
       if (langNameLower.includes("bahasa indonesia")) {
@@ -652,18 +671,6 @@ const App: React.FC = () => {
          initialTutorMessage = `Hello! I'm your personal tutor for ${submittedTopic}. How can I help you get started?`;
       }
       newChat = startChatSession(submittedTopic, submittedTargetLanguage);
-
-      setLoadingStepMessage("Fetching learning resources...");
-      try {
-        fetchedResources = await fetchLearningResources(submittedTopic, submittedTargetLanguage);
-        if (!fetchedResources) {
-          setFetchResourcesError("Sumber belajar tidak ditemukan untuk topik ini.");
-        }
-      } catch (resErr) {
-        console.warn("Failed to fetch learning resources during initial setup, but continuing:", resErr);
-        setFetchResourcesError(formatAiError(resErr));
-        fetchedResources = null;
-      }
       
       // Update state after all essential parts are fetched or attempted
       const modulesWithLoadingErrorStatus = curriculumOutlineData.modules.map(m => ({ 
