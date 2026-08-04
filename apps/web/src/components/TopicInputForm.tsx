@@ -1,21 +1,6 @@
-import React, { useState, useEffect, memo } from 'react';
+import React, { memo } from 'react';
 import { APP_TITLE, Icons } from '../constants';
-
-const commonLanguages = [
-  { code: 'id', name: 'Bahasa Indonesia' },
-  { code: 'en', name: 'English' },
-  { code: 'es', name: 'Español (Spanish)' },
-  { code: 'fr', name: 'Français (French)' },
-  { code: 'de', name: 'Deutsch (German)' },
-  { code: 'ja', name: '日本語 (Japanese)' },
-  { code: 'ko', name: '한국어 (Korean)' },
-  { code: 'zh', name: '中文 (Mandarin Chinese)' },
-  { code: 'ar', name: 'العربية (Arabic)' },
-  { code: 'hi', name: 'हिन्दी (Hindi)' },
-  { code: 'pt', name: 'Português (Portuguese)' },
-  { code: 'ru', name: 'Русский (Russian)' },
-  { code: 'other', name: 'Other (Specify)' }
-];
+import { useTopicInputForm, commonLanguages } from '../hooks/useTopicInputForm';
 
 interface TopicInputFormProps {
   onSubmit: (topic: string, targetLanguage: string) => void;
@@ -25,44 +10,15 @@ interface TopicInputFormProps {
 }
 
 function TopicInputFormInternal({ onSubmit, isLoading, initialTopic = '', initialLanguage = 'Bahasa Indonesia' }: TopicInputFormProps) {
-  const [topic, setTopic] = useState(initialTopic);
-  
-  const findLangCode = (langName: string) => {
-    const found = commonLanguages.find(l => l.name === langName);
-    if (found) return found.code;
-    if (langName && commonLanguages.every(l => l.name !== langName)) return 'other'; 
-    return 'id'; 
-  };
-
-  const [selectedLanguageCode, setSelectedLanguageCode] = useState<string>(() => findLangCode(initialLanguage));
-  const [customLanguageInput, setCustomLanguageInput] = useState<string>(() => 
-    findLangCode(initialLanguage) === 'other' ? initialLanguage : ''
-  );
-  
-  useEffect(() => {
-    setTopic(initialTopic);
-    const langCode = findLangCode(initialLanguage);
-    setSelectedLanguageCode(langCode);
-    setCustomLanguageInput(langCode === 'other' ? initialLanguage : '');
-  }, [initialTopic, initialLanguage]);
-
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (topic.trim()) {
-      let finalTargetLanguage = '';
-      if (selectedLanguageCode === 'other') {
-        finalTargetLanguage = customLanguageInput.trim();
-      } else {
-        const selectedLangObj = commonLanguages.find(lang => lang.code === selectedLanguageCode);
-        finalTargetLanguage = selectedLangObj ? selectedLangObj.name : 'Bahasa Indonesia'; 
-      }
-      if (!finalTargetLanguage && selectedLanguageCode !== 'other') { 
-        finalTargetLanguage = 'Bahasa Indonesia';
-      }
-      onSubmit(topic.trim(), finalTargetLanguage);
-    }
-  };
+  const {
+    topic,
+    setTopic,
+    selectedLanguageCode,
+    setSelectedLanguageCode,
+    customLanguageInput,
+    setCustomLanguageInput,
+    handleSubmit
+  } = useTopicInputForm({ initialTopic, initialLanguage, onSubmit });
 
   return (
     <div className="max-w-2xl w-full mx-auto p-4 sm:p-6 md:p-8 bg-brand-white dark:bg-brand-black rounded-xl shadow-2xl border border-brand-mediumGray dark:border-gray-700">
