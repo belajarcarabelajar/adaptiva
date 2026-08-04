@@ -4,6 +4,7 @@ import {
   buildClearCookie,
   buildSessionCookie,
   consumeState,
+  decodeIdTokenUnsafe,
   getOrigin,
   isHttps,
   jsonResponse,
@@ -54,6 +55,36 @@ describe("buildSessionCookie", () => {
   it("should handle empty session ID", () => {
     const cookie = buildSessionCookie("", false);
     expect(cookie).toBe(`${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`);
+  });
+});
+
+describe("decodeIdTokenUnsafe", () => {
+  it("successfully decodes a valid JWT payload", () => {
+    const payload = {
+      sub: "1234567890",
+      email: "test@example.com",
+      email_verified: true,
+      name: "Test User",
+    };
+
+    const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+    const payloadB64 = btoa(JSON.stringify(payload)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const signature = "mock-signature";
+
+    const token = `${header}.${payloadB64}.${signature}`;
+
+    const result = decodeIdTokenUnsafe(token);
+    expect(result).toEqual(payload as any);
+  });
+
+  it("throws error when id_token is missing", () => {
+    expect(() => decodeIdTokenUnsafe("")).toThrow("Missing id_token");
+  });
+
+  it("throws error when id_token is malformed", () => {
+    expect(() => decodeIdTokenUnsafe("part1.part2")).toThrow("Malformed id_token");
+    expect(() => decodeIdTokenUnsafe("part1")).toThrow("Malformed id_token");
+    expect(() => decodeIdTokenUnsafe("part1.part2.part3.part4")).toThrow("Malformed id_token");
   });
 });
 
