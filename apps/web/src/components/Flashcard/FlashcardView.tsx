@@ -9,7 +9,7 @@ import FlashcardModal from './FlashcardModal';
 
 interface FlashcardViewProps {
   flashcards: ReturnType<typeof useFlashcards>;
-  setCurriculumSubTab: (tab: string) => void;
+  setCurriculumSubTab: React.Dispatch<React.SetStateAction<import("../../types").CurriculumSubTab>>;
   curriculumSubTab: string;
   targetLanguage: string;
   setIsAuthModalOpen: (val: boolean) => void;
