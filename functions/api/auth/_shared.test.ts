@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 import type { Env } from "./_shared";
 import {
   buildClearCookie,
+  consumeState,
   randomToken,
   refundUserPoints,
   isEmailAllowed,
@@ -24,7 +25,6 @@ describe("buildClearCookie", () => {
 describe("randomToken", () => {
   it("should generate a random string of the correct length", () => {
     const token = randomToken(32);
-    // 32 bytes = 43 chars in base64url (no padding)
     expect(token.length).toBe(43);
   });
 
@@ -35,8 +35,6 @@ describe("randomToken", () => {
 
   it("should only contain URL-safe base64 characters", () => {
     const token = randomToken(64);
-    // base64url allows A-Z, a-z, 0-9, -, _
-    // No padding = no trailing '='
     expect(token).toMatch(/^[A-Za-z0-9\-_]+$/);
     expect(token).not.toContain("+");
     expect(token).not.toContain("/");
@@ -215,5 +213,101 @@ describe("refundUserPoints", () => {
     expect(result).toEqual({ success: false, remainingPoints: 0 });
     expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("sess:test-session-id");
     expect(mockEnv.SESSIONS.put).not.toHaveBeenCalled();
+  });
+});
+
+describe("consumeState", () => {
+  it("returns true for a valid, recent state", async () => {
+    const mockEnv = {
+      SESSIONS: {
+        get: vi.fn(async (key: string) => {
+          if (key === "oauth_state:valid_state") {
+            return JSON.stringify({ createdAt: Date.now() });
+          }
+          return null;
+        }),
+        delete: vi.fn(async () => {}),
+        put: vi.fn(async () => {}),
+      },
+    } as unknown as Env;
+
+    const result = await consumeState(mockEnv, "valid_state");
+    expect(result).toBe(true);
+    expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("oauth_state:valid_state");
+    expect(mockEnv.SESSIONS.delete).toHaveBeenCalledWith("oauth_state:valid_state");
+  });
+
+  it("returns false when state is not found", async () => {
+    const mockEnv = {
+      SESSIONS: {
+        get: vi.fn(async () => null),
+        delete: vi.fn(async () => {}),
+        put: vi.fn(async () => {}),
+      },
+    } as unknown as Env;
+
+    const result = await consumeState(mockEnv, "missing_state");
+    expect(result).toBe(false);
+    expect(mockEnv.SESSIONS.delete).not.toHaveBeenCalled();
+  });
+
+  it("returns false for invalid JSON in KV store", async () => {
+    const mockEnv = {
+      SESSIONS: {
+        get: vi.fn(async (key: string) => {
+          if (key === "oauth_state:invalid_json_state") {
+            return "{ invalid_json: true ";
+          }
+          return null;
+        }),
+        delete: vi.fn(async () => {}),
+        put: vi.fn(async () => {}),
+      },
+    } as unknown as Env;
+
+    const result = await consumeState(mockEnv, "invalid_json_state");
+    expect(result).toBe(false);
+    expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("oauth_state:invalid_json_state");
+    expect(mockEnv.SESSIONS.delete).toHaveBeenCalledWith("oauth_state:invalid_json_state");
+  });
+
+  it("returns false when createdAt is not a number", async () => {
+    const mockEnv = {
+      SESSIONS: {
+        get: vi.fn(async (key: string) => {
+          if (key === "oauth_state:bad_created_at") {
+            return JSON.stringify({ createdAt: "not_a_number" });
+          }
+          return null;
+        }),
+        delete: vi.fn(async () => {}),
+        put: vi.fn(async () => {}),
+      },
+    } as unknown as Env;
+
+    const result = await consumeState(mockEnv, "bad_created_at");
+    expect(result).toBe(false);
+    expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("oauth_state:bad_created_at");
+    expect(mockEnv.SESSIONS.delete).toHaveBeenCalledWith("oauth_state:bad_created_at");
+  });
+
+  it("returns false for an expired state", async () => {
+    const mockEnv = {
+      SESSIONS: {
+        get: vi.fn(async (key: string) => {
+          if (key === "oauth_state:expired_state") {
+            return JSON.stringify({ createdAt: Date.now() - 1200 * 1000 });
+          }
+          return null;
+        }),
+        delete: vi.fn(async () => {}),
+        put: vi.fn(async () => {}),
+      },
+    } as unknown as Env;
+
+    const result = await consumeState(mockEnv, "expired_state");
+    expect(result).toBe(false);
+    expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("oauth_state:expired_state");
+    expect(mockEnv.SESSIONS.delete).toHaveBeenCalledWith("oauth_state:expired_state");
   });
 });
