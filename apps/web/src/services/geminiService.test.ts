@@ -578,6 +578,20 @@ describe('generateFlashcardsFromMaterial & generateSevenDayPlan & startChatSessi
     expect(result).toBeNull();
   });
 
+  it('should return null when seven day plan JSON contains fewer than 7 days', async () => {
+    const mockPlanData = {
+      days: Array.from({ length: 6 }, (_, i) => ({
+        dayNumber: i + 1,
+        theme: `Theme ${i + 1}`,
+        modules: [`Modul ${i + 1}`],
+        summaryFocus: `Module ${i + 1}`,
+      })),
+    };
+    mockGenerateContent.mockResolvedValue({ text: JSON.stringify(mockPlanData) });
+    const result = await generateSevenDayPlan('Topic', 'Syllabus', ['M1'], 'English');
+    expect(result).toBeNull();
+  });
+
   it('should initialize chat session in non-English, non-Indonesian language (e.g. Spanish)', () => {
     mockCreateChat.mockReturnValue({ sendMessageStream: vi.fn() });
     const chat = startChatSession('Physics', 'Spanish');
