@@ -444,6 +444,48 @@ describe('generateModuleLectureSummary additional paths', () => {
     expect(result2?.moduleMaterial).toBe('Cached material content here');
     expect(mockGenerateContent).not.toHaveBeenCalled();
   });
+
+  it('should evict the least recently used item when cache exceeds MAX_CACHE_SIZE (50)', async () => {
+    // Fill the cache with exactly 50 items (max capacity)
+    for (let i = 1; i <= 50; i++) {
+      mockGenerateContent.mockResolvedValueOnce({
+        text: JSON.stringify({ moduleMaterial: `Material ${i}` })
+      });
+      await generateModuleLectureSummary(`Module ${i}`, 'EvictionTopic', 'English');
+    }
+
+    mockGenerateContent.mockClear();
+
+    // Access the 1st item again. This should hit the cache and move it to the MRU position (end of cache).
+    const resultFirstAgain = await generateModuleLectureSummary('Module 1', 'EvictionTopic', 'English');
+    expect(resultFirstAgain?.moduleMaterial).toBe('Material 1');
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+
+    // Now add a 51st item. Since capacity is 50, the LRU item should be evicted.
+    // The LRU item is now 'Module 2' because 'Module 1' was just accessed.
+    mockGenerateContent.mockResolvedValueOnce({
+        text: JSON.stringify({ moduleMaterial: 'Material 51' })
+    });
+    await generateModuleLectureSummary('Module 51', 'EvictionTopic', 'English');
+
+    mockGenerateContent.mockClear();
+
+    // Try to access the originally 2nd item ('Module 2'). It should have been evicted.
+    // So it should result in a cache miss and trigger an API call.
+    mockGenerateContent.mockResolvedValueOnce({
+        text: JSON.stringify({ moduleMaterial: 'Material 2 (re-fetched)' })
+    });
+    const resultEvicted = await generateModuleLectureSummary('Module 2', 'EvictionTopic', 'English');
+    expect(resultEvicted?.moduleMaterial).toBe('Material 2 (re-fetched)');
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+
+    mockGenerateContent.mockClear();
+
+    // The 1st item should still be in cache because we accessed it recently.
+    const resultRetained = await generateModuleLectureSummary('Module 1', 'EvictionTopic', 'English');
+    expect(resultRetained?.moduleMaterial).toBe('Material 1');
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
 });
 
 describe('generateDetailedQuizExplanation additional paths', () => {
