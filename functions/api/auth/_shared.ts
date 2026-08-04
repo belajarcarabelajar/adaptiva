@@ -130,8 +130,8 @@ export function timingSafeEqual(a: string, b: string): boolean {
 
 // --- Cookie helpers ---
 
-export function parseCookies(request: Request): Record<string, string> {
-  const header = request.headers.get("cookie");
+export function parseCookies(request: Request | string | null | undefined): Record<string, string> {
+  const header = typeof request === "string" ? request : request?.headers?.get("cookie");
   const out: Record<string, string> = {};
   if (!header) return out;
   for (const part of header.split(";")) {
@@ -176,7 +176,7 @@ export function getOrigin(request: Request, env?: Env): string {
 }
 
 export function getAllowedOrigin(request: Request, env?: Env): string {
-  const originHeader = request.headers.get("origin");
+  const originHeader = request.headers?.get("origin");
   const reqOrigin = new URL(request.url).origin;
 
   // If no origin header, assume same-origin request
@@ -211,14 +211,12 @@ export function getAllowedOrigin(request: Request, env?: Env): string {
 export function isHttps(request: Request, env?: Env): boolean {
   if (env?.AUTH_BASE_URL) return getOrigin(request, env).startsWith("https://");
   const proto =
-    request.headers.get("x-forwarded-proto") ||
-    request.headers.get("cf-visitor");
+    request.headers?.get("x-forwarded-proto") ||
+    request.headers?.get("cf-visitor");
   if (proto && proto.includes("https")) return true;
   const url = new URL(request.url);
   if (url.protocol === "https:") return true;
-  return (
-    !url.hostname.includes("localhost") && !url.hostname.includes("127.0.0.1")
-  );
+  return false;
 }
 
 // --- Session helpers ---
