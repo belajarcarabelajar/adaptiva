@@ -37,6 +37,7 @@ import MemoizedTopicInputForm from './components/TopicInputForm';
 import ExamConfigView from './components/ExamConfigView';
 import ExamTakingView from './components/ExamTakingView';
 import ExamResultsView from './components/ExamResultsView';
+import DetailedExplanation from './components/DetailedExplanation';
 import AuthButton from './components/AuthButton';
 import AuthModal from './components/AuthModal';
 import PointsBadge from './components/PointsBadge';
@@ -2265,39 +2266,14 @@ const App: React.FC = () => {
                                                     <MemoizedMarkdownRenderer content={currentActiveQuizQuestionData.explanation} baseTextSize="text-sm md:text-lg" />
                                                 </div>
                                             )}
-                                            <div className="mt-2 md:mt-3">
-                                            {currentActiveQuizQuestionData.isDetailedExplanationLoading ? (
-                                                <div className="flex items-center text-brand-blue dark:text-blue-400">
-                                                <Icons.LoadingAnimatedIcon className="animate-spin h-4 w-4 md:h-5 md:h-5 text-brand-blue dark:text-blue-400"/> 
-                                                <span className="ml-2 text-md md:text-lg">Loading more details...</span>
-                                                </div>
-                                            ) : currentActiveQuizQuestionData.detailedExplanation ? (
-                                                <>
-                                                <Accordion 
-                                                    key={`detail-accordion-${currentActiveQuizQuestionData.id}${currentActiveQuizQuestionData.detailedExplanation && !currentActiveQuizQuestionData.detailedExplanation.startsWith("Error:") ? '-success' : '-fail-or-pending'}`}
-                                                    title={<span className="text-lg md:text-xl font-semibold text-brand-orange dark:text-orange-400">Click Here to See Further Details:</span>}
-                                                    startOpen={!!currentActiveQuizQuestionData.detailedExplanation && !currentActiveQuizQuestionData.isDetailedExplanationLoading && !currentActiveQuizQuestionData.detailedExplanation.startsWith("Error:")}
-                                                >
-                                                    <MemoizedMarkdownRenderer content={currentActiveQuizQuestionData.detailedExplanation} baseTextSize="text-sm md:text-lg" />
-                                                </Accordion>
-                                                {currentActiveQuizQuestionData.detailedExplanation.includes("Failed to load detailed explanation (empty response).") && (
-                                                    <button
-                                                    onClick={() => handleLoadDetailedExplanation(currentActiveQuizQuestionData.id, false)}
-                                                    className="mt-2 px-3 py-1.5 bg-brand-yellow hover:bg-yellow-600 text-brand-black font-semibold rounded-lg text-sm"
-                                                    >
-                                                    Regenerate Details
-                                                    </button>
-                                                )}
-                                                </>
-                                            ) : (
-                                                <button
-                                                onClick={() => handleLoadDetailedExplanation(currentActiveQuizQuestionData.id, false)}
-                                                className={`px-3 py-1.5 md:px-4 md:py-2 bg-brand-orange hover:bg-[#D84315] dark:hover:bg-orange-600 text-brand-white text-sm md:text-md font-semibold rounded-lg`}
-                                                >
-                                                Load More Details
-                                                </button>
-                                            )}
-                                            </div>
+                                            <DetailedExplanation
+                                                id={currentActiveQuizQuestionData.id}
+                                                isDetailedExplanationLoading={currentActiveQuizQuestionData.isDetailedExplanationLoading || false}
+                                                detailedExplanation={currentActiveQuizQuestionData.detailedExplanation}
+                                                onLoadDetailedExplanation={() => handleLoadDetailedExplanation(currentActiveQuizQuestionData.id, false)}
+                                                accordionKeyPrefix="detail-accordion"
+                                                titleText="Click Here to See Further Details:"
+                                            />
                                         </div>
                                     )}
                                 </div>
@@ -2379,39 +2355,14 @@ const App: React.FC = () => {
                                         <p className={`${largeTextBase} mb-2 text-sm md:text-base`}><strong>Correct Answer:</strong> {q.correctAnswer}</p>
                                         <h5 className={`text-lg md:text-xl font-semibold text-brand-blue dark:text-blue-400 mt-2 mb-1`}>Explanation:</h5>
                                         <MemoizedMarkdownRenderer content={q.explanation || "No explanation provided."} baseTextSize="text-sm md:text-lg" />
-                                        <div className="mt-2 md:mt-3">
-                                        {q.isDetailedExplanationLoading ? (
-                                            <div className="flex items-center text-brand-blue dark:text-blue-400">
-                                            <Icons.LoadingAnimatedIcon className="animate-spin h-4 w-4 md:h-5 md:h-5 text-brand-blue dark:text-blue-400"/> 
-                                            <span className="ml-2 text-md md:text-lg">Loading more details...</span>
-                                            </div>
-                                        ) : q.detailedExplanation ? (
-                                            <>
-                                            <Accordion 
-                                                key={`detail-accordion-review-${q.id}${q.detailedExplanation && !q.detailedExplanation.startsWith("Error:") ? '-success' : '-fail-or-pending'}`}
-                                                title={<span className="text-lg md:text-xl font-semibold text-brand-orange dark:text-orange-400">Further Details:</span>}
-                                                startOpen={!!q.detailedExplanation && !q.isDetailedExplanationLoading && !q.detailedExplanation.startsWith("Error:")}
-                                            >
-                                                <MemoizedMarkdownRenderer content={q.detailedExplanation} baseTextSize="text-sm md:text-lg" />
-                                            </Accordion>
-                                            {q.detailedExplanation.includes("Failed to load detailed explanation (empty response).") && (
-                                                <button
-                                                onClick={() => handleLoadDetailedExplanation(q.id, false)}
-                                                className="mt-2 px-3 py-1.5 bg-brand-yellow hover:bg-yellow-600 text-brand-black font-semibold rounded-lg text-sm"
-                                                >
-                                                Regenerate Details
-                                                </button>
-                                            )}
-                                            </>
-                                        ) : (
-                                            <button
-                                            onClick={() => handleLoadDetailedExplanation(q.id, false)}
-                                            className={`px-3 py-1.5 md:px-4 md:py-2 bg-brand-orange hover:bg-[#D84315] dark:hover:bg-orange-600 text-brand-white text-sm md:text-md font-semibold rounded-lg`}
-                                            >
-                                            Load More Details
-                                            </button>
-                                        )}
-                                        </div>
+                                        <DetailedExplanation
+                                            id={q.id}
+                                            isDetailedExplanationLoading={q.isDetailedExplanationLoading || false}
+                                            detailedExplanation={q.detailedExplanation}
+                                            onLoadDetailedExplanation={() => handleLoadDetailedExplanation(q.id, false)}
+                                            accordionKeyPrefix="detail-accordion-review"
+                                            titleText="Further Details:"
+                                        />
                                     </Accordion>
                                 ))}
                                 <div className="mt-6 md:mt-8 flex flex-col sm:flex-row sm:justify-end space-y-2 sm:space-y-0 sm:space-x-3">
