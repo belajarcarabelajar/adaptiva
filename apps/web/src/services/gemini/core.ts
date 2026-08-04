@@ -107,45 +107,20 @@ const cleanParsedObject = <T,>(obj: T): T => {
 };
 
 const sanitizeJsonString = (str: string): string => {
-  // 1. Remove trailing commas before closing object/array delimiters
-  const clean = str.replace(/,\s*([}\]])/g, "$1");
-
-  // 2. Escape literal control characters inside double-quoted JSON string values
-  let result = "";
-  let inString = false;
-  let isEscaped = false;
-
-  for (let i = 0; i < clean.length; i++) {
-    const ch = clean[i];
-    if (inString) {
-      if (isEscaped) {
-        result += ch;
-        isEscaped = false;
-      } else if (ch === "\\") {
-        result += ch;
-        isEscaped = true;
-      } else if (ch === '"') {
-        result += ch;
-        inString = false;
-      } else if (ch === "\n") {
-        result += "\\n";
-      } else if (ch === "\r") {
-        result += "\\r";
-      } else if (ch === "\t") {
-        result += "\\t";
-      } else if (ch.charCodeAt(0) < 32) {
-        result += "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0");
-      } else {
-        result += ch;
-      }
-    } else {
-      if (ch === '"') {
-        inString = true;
-      }
-      result += ch;
-    }
-  }
-  return result;
+  return str
+    // 1. Remove trailing commas before closing object/array delimiters
+    .replace(/,\s*([}\]])/g, "$1")
+    // 2. Escape literal control characters inside double-quoted JSON string values
+    .replace(/"(?:[^"\\]|\\.)*"/g, (match) => {
+      // Fast path: if no control characters exist, return the match directly
+      if (!/[\x00-\x1F]/.test(match)) return match;
+      return match.replace(/[\x00-\x1F]/g, (c) => {
+        if (c === "\n") return "\\n";
+        if (c === "\r") return "\\r";
+        if (c === "\t") return "\\t";
+        return "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0");
+      });
+    });
 };
 
 const tryParseCandidate = <T,>(candidate: string): T | null => {
