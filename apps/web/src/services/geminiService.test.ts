@@ -478,6 +478,31 @@ describe('generateDetailedQuizExplanation additional paths', () => {
 describe('generateExamQuestions additional paths', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
+  it('should use fallback difficulty description when difficulty is out of range', async () => {
+    const mockExamData = {
+      questions: [
+        {
+          id: 'q1',
+          type: 'multiple-choice',
+          questionText: 'Test?',
+          options: ['A', 'B', 'C', 'D'],
+          correctAnswer: 'A',
+          explanation: 'Exp',
+        }
+      ]
+    };
+    mockGenerateContent.mockResolvedValue({ text: JSON.stringify(mockExamData) });
+
+    await generateExamQuestions('Topic', 'Material content here', 1, 999, 'English');
+
+    // Verify the prompt contains the medium difficulty description
+    expect(mockGenerateContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contents: expect.stringContaining('medium, requiring some application of knowledge')
+      })
+    );
+  });
+
   it('should return null when exam JSON cannot be parsed', async () => {
     mockGenerateContent.mockResolvedValue({ text: 'invalid json' });
     const result = await generateExamQuestions('Topic', 'Material content here', 5, 3, 'English');
