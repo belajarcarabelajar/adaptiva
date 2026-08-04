@@ -9,7 +9,7 @@
 // to Google). Click sign-out -> navigates to /api/auth/logout (clears cookie).
 
 import React, { useState, useRef, useEffect } from "react";
-import { useAuth } from "../hooks/useAuth";
+import { useAuth, type AuthUser } from "../hooks/useAuth";
 
 const GoogleMark: React.FC = () => (
   <svg
@@ -37,8 +37,7 @@ const GoogleMark: React.FC = () => (
   </svg>
 );
 
-const AuthButton: React.FC = () => {
-  const { user, status, error, signIn, signOut } = useAuth();
+const UserMenu: React.FC<{ user: AuthUser; signOut: () => void }> = ({ user, signOut }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -54,62 +53,8 @@ const AuthButton: React.FC = () => {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [menuOpen]);
 
-  if (status === "loading") {
-    return (
-      <div
-        className="inline-flex items-center text-sm text-gray-500 dark:text-gray-400"
-        role="status"
-        aria-live="polite"
-      >
-        <svg
-          aria-hidden="true"
-          className="animate-spin h-4 w-4 mr-2"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
-        <span className="sr-only">Loading sign-in status</span>
-      </div>
-    );
-  }
-
-  if (status === "unauthenticated" || !user) {
-    return (
-      <div className="flex flex-col items-end">
-        <button
-          type="button"
-          onClick={() => signIn()}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue transition-colors"
-          aria-label="Sign in with Google"
-        >
-          <GoogleMark />
-          <span>Sign in with Google</span>
-        </button>
-        {error && (
-          <span className="mt-1 text-xs text-red-600 dark:text-red-400">
-            {error}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  // Authenticated: avatar + name, click to open menu.
   const initial = user.name?.trim().charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase();
+
   return (
     <div className="relative" ref={menuRef}>
       <button
@@ -166,6 +111,67 @@ const AuthButton: React.FC = () => {
       )}
     </div>
   );
+};
+
+const AuthButton: React.FC = () => {
+  const { user, status, error, signIn, signOut } = useAuth();
+
+  if (status === "loading") {
+    return (
+      <div
+        className="inline-flex items-center text-sm text-gray-500 dark:text-gray-400"
+        role="status"
+        aria-live="polite"
+      >
+        <svg
+          aria-hidden="true"
+          className="animate-spin h-4 w-4 mr-2"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          />
+        </svg>
+        <span className="sr-only">Loading sign-in status</span>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated" || !user) {
+    return (
+      <div className="flex flex-col items-end">
+        <button
+          type="button"
+          onClick={() => signIn()}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue transition-colors"
+          aria-label="Sign in with Google"
+        >
+          <GoogleMark />
+          <span>Sign in with Google</span>
+        </button>
+        {error && (
+          <span className="mt-1 text-xs text-red-600 dark:text-red-400">
+            {error}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  // Authenticated: avatar + name, click to open menu.
+  return <UserMenu user={user} signOut={signOut} />;
 };
 
 export default AuthButton;
