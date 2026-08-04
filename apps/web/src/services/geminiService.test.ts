@@ -444,6 +444,28 @@ describe('generateModuleLectureSummary additional paths', () => {
     expect(result2?.moduleMaterial).toBe('Cached material content here');
     expect(mockGenerateContent).not.toHaveBeenCalled();
   });
+
+  it('should evict the oldest cache entry when MAX_CACHE_SIZE is exceeded', async () => {
+    mockGenerateContent.mockResolvedValue({ text: JSON.stringify({ moduleMaterial: 'Content' }) });
+
+    // MAX_CACHE_SIZE is 50, so add 51 unique entries
+    for (let i = 0; i <= 50; i++) {
+      await generateModuleLectureSummary(`Evict ${i}`, 'Eviction Topic', 'English');
+    }
+
+    mockGenerateContent.mockClear();
+
+    // The oldest entry "Evict 0" should have been evicted
+    await generateModuleLectureSummary('Evict 0', 'Eviction Topic', 'English');
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+
+    mockGenerateContent.mockClear();
+
+    // A recently added entry "Evict 50" should still be in cache
+    await generateModuleLectureSummary('Evict 50', 'Eviction Topic', 'English');
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
+
 });
 
 describe('generateDetailedQuizExplanation additional paths', () => {
