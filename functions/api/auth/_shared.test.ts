@@ -4,6 +4,10 @@ import {
   buildClearCookie,
   buildSessionCookie,
   consumeState,
+  getOrigin,
+  isHttps,
+  jsonResponse,
+  redirectResponse,
   parseCookies,
   randomHex,
   randomToken,
@@ -160,6 +164,36 @@ describe("randomToken", () => {
     const token1 = randomToken(32);
     const token2 = randomToken(32);
     expect(token1).not.toEqual(token2);
+  });
+});
+
+describe("getOrigin and isHttps", () => {
+  it("extracts origin from request", () => {
+    const req = new Request("https://example.com/api/test");
+    expect(getOrigin(req)).toBe("https://example.com");
+  });
+
+  it("checks https protocol", () => {
+    const reqHttps = new Request("https://example.com");
+    const reqHttp = new Request("http://example.com");
+    expect(isHttps(reqHttps)).toBe(true);
+    expect(isHttps(reqHttp)).toBe(false);
+  });
+});
+
+describe("jsonResponse and redirectResponse", () => {
+  it("creates json response with correct status and headers", () => {
+    const req = new Request("https://example.com");
+    const res = jsonResponse(req, { success: true }, 200, { "X-Test": "value" });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("application/json");
+    expect(res.headers.get("X-Test")).toBe("value");
+  });
+
+  it("creates redirect response with 302 status", () => {
+    const res = redirectResponse("https://example.com/target");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("https://example.com/target");
   });
 });
 
