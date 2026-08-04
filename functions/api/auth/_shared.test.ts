@@ -4,6 +4,7 @@ import {
   buildClearCookie,
   buildSessionCookie,
   consumeState,
+  parseCookies,
   randomHex,
   randomToken,
   refundUserPoints,
@@ -49,6 +50,42 @@ describe("buildSessionCookie", () => {
   it("should handle empty session ID", () => {
     const cookie = buildSessionCookie("", false);
     expect(cookie).toBe(`${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`);
+  });
+});
+
+describe("parseCookies", () => {
+  it("should return an empty record when cookie header is null or undefined", () => {
+    expect(parseCookies(null)).toEqual({});
+    expect(parseCookies(undefined as any)).toEqual({});
+  });
+
+  it("should return an empty record when cookie header is empty or whitespace", () => {
+    expect(parseCookies("")).toEqual({});
+    expect(parseCookies("   ")).toEqual({});
+  });
+
+  it("should parse a single cookie correctly", () => {
+    expect(parseCookies("foo=bar")).toEqual({ foo: "bar" });
+  });
+
+  it("should parse multiple cookies separated by semicolons", () => {
+    const result = parseCookies("foo=bar; baz=qux; key=value");
+    expect(result).toEqual({ foo: "bar", baz: "qux", key: "value" });
+  });
+
+  it("should trim whitespace around cookie names and values", () => {
+    const result = parseCookies("  foo = bar  ;   baz = qux ");
+    expect(result).toEqual({ foo: "bar", baz: "qux" });
+  });
+
+  it("should decode URI encoded cookie values", () => {
+    const result = parseCookies("user=john%20doe; redirect=%2Fdashboard");
+    expect(result).toEqual({ user: "john doe", redirect: "/dashboard" });
+  });
+
+  it("should ignore malformed cookie pairs without equal sign or empty key", () => {
+    const result = parseCookies("malformed_cookie; =empty_key; valid=value");
+    expect(result).toEqual({ valid: "value" });
   });
 });
 
