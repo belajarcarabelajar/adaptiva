@@ -128,20 +128,39 @@ describe("Gemini Proxy [[path]].ts", () => {
     (sharedAuth.deductUserPoints as any).mockResolvedValue({ success: true, remainingPoints: 95, session: {} as any });
     (sharedAuth.refundUserPoints as any).mockResolvedValue({ success: true, remainingPoints: 100 });
 
-    const mockUpstreamResponse = new Response(JSON.stringify({ error: { message: "Bad Request" } }), {
-      status: 400,
-      headers: { "content-type": "application/json" },
-    });
-    (global.fetch as any).mockResolvedValue(mockUpstreamResponse);
+    const errorSpy = mock();
+    const originalConsoleError = console.error;
+    console.error = errorSpy;
 
-    const response = await onRequest(mockContext as any);
-    expect(response.status).toBe(400);
+    try {
+      const mockUpstreamResponse = new Response(JSON.stringify({ error: { message: "Bad Request", status: "INVALID_ARGUMENT" } }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+      (global.fetch as any).mockResolvedValue(mockUpstreamResponse);
 
-    const json = await response.json();
-    expect(json.error).toBe("ai_generation_failed");
-    expect(json.message).toBe("Bad Request");
+      const response = await onRequest(mockContext as any);
+      expect(response.status).toBe(400);
 
-    expect(sharedAuth.refundUserPoints).toHaveBeenCalled();
+      const json = await response.json();
+      expect(json.error).toBe("ai_generation_failed");
+      expect(json.message).toBe("Bad Request");
+
+      expect(sharedAuth.refundUserPoints).toHaveBeenCalled();
+
+      // New: assert server-side log captured the upstream detail
+      expect(errorSpy).toHaveBeenCalled();
+      const logPayload = errorSpy.mock.calls[0][1];
+      expect(errorSpy.mock.calls[0][0]).toBe("Gemini upstream error");
+      expect(logPayload).toMatchObject({
+        action: "default",
+        upstreamStatus: 400,
+        upstreamErrorStatus: "INVALID_ARGUMENT",
+        upstreamErrorMessage: "Bad Request",
+      });
+    } finally {
+      console.error = originalConsoleError;
+    }
   });
 
   it("should block if AI generation finishReason is SAFETY", async () => {

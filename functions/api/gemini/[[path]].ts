@@ -231,16 +231,29 @@ async function handleUpstreamErrorAndRefund(
   resHeaders.set("x-adaptiva-points", String(updatedPoints));
 
   let errorDetail = "";
+  let errorStatus = "";
   try {
     const errJson = (await upstream.clone().json()) as {
-      error?: { message?: string };
+      error?: { message?: string; status?: string };
     } | null;
     if (typeof errJson?.error?.message === "string") {
       errorDetail = errJson.error.message;
     }
+    if (typeof errJson?.error?.status === "string") {
+      errorStatus = errJson.error.status;
+    }
   } catch {
     // Ignore JSON parse errors on non-200 responses
   }
+
+  // Surface upstream failure reason to server logs so 400s are diagnosable
+  // from `wrangler pages deployment tail`. Client response stays unchanged.
+  console.error("Gemini upstream error", {
+    action: request.headers.get("x-adaptiva-action") || "default",
+    upstreamStatus: upstream.status,
+    upstreamErrorStatus: errorStatus || undefined,
+    upstreamErrorMessage: errorDetail || undefined,
+  });
 
   return new Response(
     JSON.stringify({
