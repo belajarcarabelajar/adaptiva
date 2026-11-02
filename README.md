@@ -6,6 +6,8 @@
 
 An intelligent, interactive learning platform that generates tailored curriculums, interactive lessons, smart flashcards, and quizzes powered by Google Gemini AI.
 
+**Live demo: [adaptiva.belajarcarabelajar.com](https://adaptiva.belajarcarabelajar.com)**
+
 [![Bun](https://img.shields.io/badge/Bun-v1.2+-black?logo=bun)](https://bun.sh)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?logo=typescript)](https://www.typescriptlang.org/)
@@ -13,9 +15,10 @@ An intelligent, interactive learning platform that generates tailored curriculum
 [![Express](https://img.shields.io/badge/Express-4.21-000000?logo=express)](https://expressjs.com/)
 [![Cloudflare Pages](https://img.shields.io/badge/Cloudflare_Pages-Deployed-F38020?logo=cloudflare)](https://pages.cloudflare.com/)
 [![Google Gemini API](https://img.shields.io/badge/Google_Gemini-2.5-4285F4?logo=google)](https://ai.google.dev/)
-[![Tests](https://img.shields.io/badge/Tests-Vitest-6E9F18?logo=vitest)](https://vitest.dev/)
 
 [Features](#-features) • [Architecture](#-architecture) • [Getting Started](#-getting-started) • [Environment Variables](#-environment-variables) • [Scripts](#-available-scripts) • [Deployment](#-deployment)
+
+![Adaptiva Study home screen with the topic input form and the session sidebar](docs/images/screenshot.png)
 
 </div>
 
@@ -74,7 +77,7 @@ graph TD
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/your-username/adaptiva.git
+   git clone https://github.com/belajarcarabelajar/adaptiva.git
    cd adaptiva
    ```
 
@@ -115,6 +118,11 @@ graph TD
 | :--- | :--- | :--- | :---: |
 | `GEMINI_API_KEY` | Monorepo / Cloudflare Pages | API Key for Google Gemini services | Yes |
 | `PORT` | `apps/api` | Port for the Express backend proxy (Default: `3001`) | No |
+| `ALLOWED_ORIGINS` | `apps/api` | Comma-separated CORS origins (Default: `localhost:3000` and `127.0.0.1:3000`) | No |
+| `GOOGLE_CLIENT_ID` | Cloudflare Pages | Google OAuth client ID for sign-in | For Sign-in |
+| `GOOGLE_CLIENT_SECRET` | Cloudflare Pages | Google OAuth client secret for sign-in | For Sign-in |
+| `AUTH_BASE_URL` | Cloudflare Pages | Overrides the OAuth redirect origin, for example in local dev | No |
+| `ALLOWED_EMAIL_DOMAINS` | Cloudflare Pages | Comma-separated email domains allowed to sign in (empty allows any) | No |
 | `CLOUDFLARE_API_TOKEN` | Deployment Scripts | API token for Cloudflare Pages deployment | For Deploy |
 | `CLOUDFLARE_ACCOUNT_ID` | Deployment Scripts | Cloudflare account ID | For Deploy |
 

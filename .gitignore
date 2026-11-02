@@ -28,6 +28,7 @@ apps/*/coverage
 .env.local
 apps/*/.env
 apps/*/.env.local
+!.env.example
 
 # Editor directories and files
 .vscode/*
