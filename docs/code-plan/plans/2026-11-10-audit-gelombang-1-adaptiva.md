@@ -315,13 +315,13 @@ Assumptions recorded: quota key = Google `sub` with the existing email fallback;
 
 | # | Follow-up (outcome + path + finish line) | Class | `defer: <ceiling>, <upgrade-trigger>` | Status |
 |---|---|---|---|---|
-| F1 | Charge by `usageMetadata` so a client cannot claim the cheaper `tutor` price | `LATER` | `defer: owner decision on billing model, next abuse signal in Gemini usage` | `OPEN` |
-| F2 | Medium and low findings of the 2026-11-09 audit (`temuan-adaptiva.json`, `l2-adaptiva.json`) | `LATER` | `defer: wave 3 sweep, owner schedules it` | `OPEN` |
-| F3 | Run `test:functions` inside `scripts/deploy-website.sh` before deploy | `LATER` | `defer: next deploy-script change, or first function regression` | `OPEN` |
+| F1 | Charge by `usageMetadata` so a client cannot claim the cheaper `tutor` price | `LATER` | `defer: owner decision on billing model, next abuse signal in Gemini usage` | `DONE` in PR #69 (server-side `maxOutputTokens` cap per action, owner decision 2026-11-10) |
+| F2 | Medium and low findings of the 2026-11-09 audit (`temuan-adaptiva.json`, `l2-adaptiva.json`) | `LATER` | `defer: wave 3 sweep, owner schedules it` | `DONE` in PRs #67 (useFlashcards), #68 (auth), #69 (proxy), #70 (dev/deploy); not reproduced: akses-5, `/me` part of dos-biaya-1 |
+| F3 | Run `test:functions` inside `scripts/deploy-website.sh` before deploy | `LATER` | `defer: next deploy-script change, or first function regression` | `DONE` in PR #70 (`test:functions` in the deploy test step) |
 | F4 | `onRequest` catch block refunds even when no deduction happened (for example a KV error inside `deductUserPoints`); record whether the deduction ran | `NOW` | | `DONE` (commit `da83402`: RED exit 1, `bun run test:functions` exit 0, 129 pass) |
 | F5 | Web typecheck red on `main` (196 errors, untyped jest-dom matchers in existing tests); fix the test typing in its own PR so T6 can pass | `NOW` | | `DONE` in PR #66 (`66e3c2a`: tsc exit 0, 0 errors; `bun run test` exit 0, 26 files); T6 turns green once #66 is merged into this branch |
-| F6 | Express dev proxy (`apps/api`) still injects the key without auth when someone sets `HOST=0.0.0.0` | `LATER` | `defer: apps/api is dev-only, next dev-tooling change` | `OPEN` |
-| F8 | Session plan, spec and ledger reach the graph only after merge: run `graphify update .` then `bun ~/vivera/scripts/graphify-sync.mjs --root "$(pwd)"` in the main checkout | `LATER` | `defer: PR merge, the graph lives in the main checkout` | `OPEN` |
+| F6 | Express dev proxy (`apps/api`) still injects the key without auth when someone sets `HOST=0.0.0.0` | `LATER` | `defer: apps/api is dev-only, next dev-tooling change` | `DONE` in PR #70 (non-loopback `HOST` refused unless `ALLOW_PUBLIC_HOST=1`) |
+| F8 | Session plan, spec and ledger reach the graph only after merge: run `graphify update .` then `bun ~/vivera/scripts/graphify-sync.mjs --root "$(pwd)"` in the main checkout | `LATER` | `defer: PR merge, the graph lives in the main checkout` | `DONE` (2026-11-10: `graphify update .` + `graphify-sync.mjs` after merge, check exit 0) |
 
 - [x] 3-5 ranked follow-ups injected as one question-tool call of multi-select checkboxes after the final recap (4 offered, 4 selected, 2026-11-10).
 - [x] Every selected follow-up executed through the full pipeline with fresh evidence.
