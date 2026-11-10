@@ -49,38 +49,48 @@ describe("me route", () => {
       expect(body).toEqual({ error: "not_authenticated" });
     });
 
-    it("should return user data when session exists", async () => {
-      const mockRequest = new Request("https://example.com", {
-        headers: new Headers({
-          cookie: `${SESSION_COOKIE}=valid-session-id`,
+    // The balance comes from the account ledger (points:<userId>); a legacy
+    // `points` field inside the session is ignored.
+    function contextFor(entries: Record<string, string>) {
+      const store = new Map(Object.entries(entries));
+      const SESSIONS = {
+        get: vi.fn(async (key: string) => store.get(key) ?? null),
+        put: vi.fn(async (key: string, value: string) => {
+          store.set(key, value);
         }),
+        delete: vi.fn(),
+      };
+      const request = new Request("https://example.com", {
+        headers: new Headers({ cookie: `${SESSION_COOKIE}=valid-session-id` }),
       });
-
-      const mockSession = {
-        userId: "user-123",
-        email: "test@example.com",
-        name: "Test User",
-        picture: "http://example.com/pic.jpg",
-        points: 150,
-        accessToken: "access-token",
-        expiresAt: Date.now() + 10000,
-        createdAt: Date.now(),
+      return {
+        store,
+        context: {
+          request,
+          env: { SESSIONS } as unknown as Env,
+          params: {},
+          data: {},
+          waitUntil: vi.fn(),
+          passThroughOnException: vi.fn(),
+        },
       };
+    }
 
-      const context = {
-        request: mockRequest,
-        env: {
-          SESSIONS: {
-            get: vi.fn().mockResolvedValue(JSON.stringify(mockSession)),
-            put: vi.fn().mockResolvedValue(undefined),
-            delete: vi.fn(),
-          },
-        } as unknown as Env,
-        params: {},
-        data: {},
-        waitUntil: vi.fn(),
-        passThroughOnException: vi.fn(),
-      };
+    const baseSession = {
+      userId: "user-123",
+      email: "test@example.com",
+      name: "Test User",
+      picture: "http://example.com/pic.jpg",
+      accessToken: "access-token",
+      expiresAt: Date.now() + 10000,
+      createdAt: Date.now(),
+    };
+
+    it("should return user data with the ledger balance when session exists", async () => {
+      const { context, store } = contextFor({
+        "sess:valid-session-id": JSON.stringify({ ...baseSession, points: 150 }),
+        "points:user-123": "70",
+      });
 
       const response = await onRequestGet(context);
       expect(response.status).toBe(200);
@@ -92,61 +102,25 @@ describe("me route", () => {
           email: "test@example.com",
           name: "Test User",
           picture: "http://example.com/pic.jpg",
-          points: 150,
+          points: 70,
         },
       });
 
       expect(context.env.SESSIONS.get).toHaveBeenCalledWith("sess:valid-session-id");
-      expect(context.env.SESSIONS.put).toHaveBeenCalledWith(
-        "sess:valid-session-id",
-        JSON.stringify(mockSession),
-        expect.any(Object)
-      );
+      expect(store.get("points:user-123")).toBe("70");
     });
 
-    it("should default points to DEFAULT_INITIAL_POINTS when points are missing", async () => {
-      const mockRequest = new Request("https://example.com", {
-        headers: new Headers({
-          cookie: `${SESSION_COOKIE}=valid-session-id`,
-        }),
+    it("should seed DEFAULT_INITIAL_POINTS when the account has no ledger entry", async () => {
+      const { context, store } = contextFor({
+        "sess:valid-session-id": JSON.stringify(baseSession),
       });
-
-      const mockSession = {
-        userId: "user-123",
-        email: "test@example.com",
-        name: "Test User",
-        picture: "http://example.com/pic.jpg",
-        accessToken: "access-token",
-        expiresAt: Date.now() + 10000,
-        createdAt: Date.now(),
-      };
-
-      const context = {
-        request: mockRequest,
-        env: {
-          SESSIONS: {
-            get: vi.fn().mockResolvedValue(JSON.stringify(mockSession)),
-            put: vi.fn().mockResolvedValue(undefined),
-            delete: vi.fn(),
-          },
-        } as unknown as Env,
-        params: {},
-        data: {},
-        waitUntil: vi.fn(),
-        passThroughOnException: vi.fn(),
-      };
 
       const response = await onRequestGet(context);
       expect(response.status).toBe(200);
 
       const body = await response.json();
       expect(body.user.points).toBe(DEFAULT_INITIAL_POINTS);
-
-      expect(context.env.SESSIONS.put).toHaveBeenCalledWith(
-        "sess:valid-session-id",
-        JSON.stringify({ ...mockSession, points: DEFAULT_INITIAL_POINTS }),
-        expect.any(Object)
-      );
+      expect(store.get("points:user-123")).toBe(String(DEFAULT_INITIAL_POINTS));
     });
   });
 });

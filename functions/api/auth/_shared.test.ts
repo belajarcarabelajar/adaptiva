@@ -93,7 +93,6 @@ describe("getSession", () => {
       accessToken: "access_123",
       expiresAt: 1234567890,
       createdAt: 1234567000,
-      points: 50,
     };
 
     const mockRequest = new Request("https://example.com", {
@@ -116,7 +115,8 @@ describe("getSession", () => {
     };
 
     const session = await getSession(mockRequest, mockEnv as any);
-    expect(session).toEqual(validSession);
+    // A session without refreshedAt gets one stamped on its first read.
+    expect(session).toEqual({ ...validSession, refreshedAt: expect.any(Number) });
     expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("sess:valid_sid");
   });
 });
@@ -331,56 +331,43 @@ describe("isEmailAllowed", () => {
 });
 
 describe("refundUserPoints", () => {
-  it("should refund points successfully", async () => {
-    const mockRequest = new Request("https://example.com", {
-      headers: new Headers({
-        cookie: `${SESSION_COOKIE}=test-session-id`,
-      }),
-    });
-
-    const mockEnv = {
+  // Refunds credit the account ledger (points:<userId>), not the session.
+  function ledgerEnv(entries: Record<string, string>) {
+    const store = new Map(Object.entries(entries));
+    const env = {
       SESSIONS: {
-        get: vi.fn().mockResolvedValue(JSON.stringify({ points: 100 })),
-        put: vi.fn().mockResolvedValue(undefined),
+        get: vi.fn(async (key: string) => store.get(key) ?? null),
+        put: vi.fn(async (key: string, value: string) => {
+          store.set(key, value);
+        }),
         delete: vi.fn(),
       },
     } as unknown as Env;
+    return { env, store };
+  }
+  const refundRequest = () =>
+    new Request("https://example.com", {
+      headers: new Headers({ cookie: `${SESSION_COOKIE}=test-session-id` }),
+    });
+  const refundSession = JSON.stringify({ userId: "user-9", email: "u@example.com", name: "U" });
 
-    const result = await refundUserPoints(mockRequest, mockEnv, 50);
+  it("should refund points successfully", async () => {
+    const { env, store } = ledgerEnv({ "sess:test-session-id": refundSession, "points:user-9": "100" });
+
+    const result = await refundUserPoints(refundRequest(), env, 50);
 
     expect(result).toEqual({ success: true, remainingPoints: 150 });
-    expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("sess:test-session-id");
-    expect(mockEnv.SESSIONS.put).toHaveBeenCalledWith(
-      "sess:test-session-id",
-      JSON.stringify({ points: 150 }),
-      expect.any(Object)
-    );
+    expect(env.SESSIONS.get).toHaveBeenCalledWith("sess:test-session-id");
+    expect(store.get("points:user-9")).toBe("150");
   });
 
-  it("should initialize points to DEFAULT_INITIAL_POINTS and refund if points are missing", async () => {
-    const mockRequest = new Request("https://example.com", {
-      headers: new Headers({
-        cookie: `${SESSION_COOKIE}=test-session-id`,
-      }),
-    });
+  it("should seed DEFAULT_INITIAL_POINTS and refund when the account has no ledger entry", async () => {
+    const { env, store } = ledgerEnv({ "sess:test-session-id": refundSession });
 
-    const mockEnv = {
-      SESSIONS: {
-        get: vi.fn().mockResolvedValue(JSON.stringify({})),
-        put: vi.fn().mockResolvedValue(undefined),
-        delete: vi.fn(),
-      },
-    } as unknown as Env;
-
-    const result = await refundUserPoints(mockRequest, mockEnv, 50);
+    const result = await refundUserPoints(refundRequest(), env, 50);
 
     expect(result).toEqual({ success: true, remainingPoints: DEFAULT_INITIAL_POINTS + 50 });
-    expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("sess:test-session-id");
-    expect(mockEnv.SESSIONS.put).toHaveBeenCalledWith(
-      "sess:test-session-id",
-      JSON.stringify({ points: DEFAULT_INITIAL_POINTS + 50 }),
-      expect.any(Object)
-    );
+    expect(store.get("points:user-9")).toBe(String(DEFAULT_INITIAL_POINTS + 50));
   });
 
   it("should return success: false when no cookie is provided", async () => {

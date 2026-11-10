@@ -17,6 +17,7 @@
     "start": "bun --filter '@adaptiva/api' start",
     "test": "bun --filter '@adaptiva/web' test",
     "test:web": "bun --filter '@adaptiva/web' test",
+    "test:functions": "bun test --isolate functions",
     "deploy": "bash scripts/deploy-website.sh --skip-test",
     "deploy:full": "bash scripts/deploy-website.sh",
     "deploy:script": "bash scripts/deploy-website.sh",
