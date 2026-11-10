@@ -8,6 +8,7 @@
 //   module-level in-flight request so concurrent callers don't refetch.
 
 import { useCallback, useEffect, useState } from "react";
+import { friendlyAuthError } from "./authErrors";
 
 export interface AuthUser {
   id: string;
@@ -109,19 +110,7 @@ export function useAuth(): UseAuthResult {
       const params = new URLSearchParams(window.location.search);
       const authError = params.get("auth_error");
       if (authError) {
-        let friendlyMsg = authError;
-        if (authError === "domain_not_allowed") {
-          friendlyMsg = "Email domain is not allowed for sign-in.";
-        } else if (authError === "email_not_verified") {
-          friendlyMsg = "Your Google email is not verified.";
-        } else if (authError === "access_denied") {
-          friendlyMsg = "Sign-in request was cancelled or denied.";
-        } else if (authError === "invalid_state") {
-          friendlyMsg = "Sign-in session expired. Please try again.";
-        } else if (authError === "not_configured") {
-          friendlyMsg = "Google Sign-in is not configured on this deployment.";
-        }
-        setError(friendlyMsg);
+        setError(friendlyAuthError(authError));
 
         // Remove auth_error from URL clean state without triggering reload
         params.delete("auth_error");

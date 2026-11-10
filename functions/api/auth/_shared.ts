@@ -2,8 +2,10 @@
 // functions/api/auth/. Kept in a sibling file (not nested under [[path]] etc.)
 // so each auth Function can `import from "./_shared"` directly.
 //
+// The OAuth state lives only in a short-lived HttpOnly cookie (see
+// buildStateCookie), which binds it to the browser that started the login.
+//
 // KV layout:
-//   oauth_state:<state>     -> { createdAt }  TTL 600s (10 min)
 //   sess:<sessionId>        -> Session         TTL 2592000s (30 days, sliding)
 //   points:<userId>         -> balance          no TTL (see ./points.ts)
 
@@ -57,9 +59,6 @@ export interface Session {
   email: string;
   name: string;
   picture?: string;
-  accessToken: string;
-  refreshToken?: string;
-  expiresAt: number;
   createdAt: number;
   // Last time the sliding TTL was renewed (ms). The balance is not stored
   // here; legacy sessions may still carry an ignored `points` field.
@@ -88,6 +87,7 @@ export interface GoogleUserInfo {
 export const SESSION_COOKIE = "adaptiva_sess";
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 export const STATE_TTL_SECONDS = 600; // 10 min
+export const STATE_COOKIE = "adaptiva_oauth_state";
 // Renewing the TTL at most daily keeps KV writes off every request.
 export const SESSION_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
@@ -151,7 +151,12 @@ export function parseCookies(request: Request | string | null | undefined): Reco
     if (eq === -1) continue;
     const k = part.slice(0, eq).trim();
     const v = part.slice(eq + 1).trim();
-    if (k) out[k] = decodeURIComponent(v);
+    if (!k) continue;
+    try {
+      out[k] = decodeURIComponent(v);
+    } catch {
+      // One malformed cookie from anywhere on the domain must not break auth.
+    }
   }
   return out;
 }
@@ -171,6 +176,37 @@ export function buildSessionCookie(sessionId: string, secure: boolean): string {
 export function buildClearCookie(secure: boolean): string {
   const parts = [
     `${SESSION_COOKIE}=`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    "Max-Age=0",
+  ];
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+// __Host- forbids a Domain attribute, so a sibling subdomain cannot plant a
+// state cookie. Browsers reject the prefix without Secure, hence plain http
+// (local dev) falls back to the bare name.
+export function stateCookieName(secure: boolean): string {
+  return secure ? `__Host-${STATE_COOKIE}` : STATE_COOKIE;
+}
+
+export function buildStateCookie(state: string, secure: boolean): string {
+  const parts = [
+    `${stateCookieName(secure)}=${encodeURIComponent(state)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${STATE_TTL_SECONDS}`,
+  ];
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+export function buildClearStateCookie(secure: boolean): string {
+  const parts = [
+    `${stateCookieName(secure)}=`,
     "Path=/",
     "HttpOnly",
     "SameSite=Lax",
@@ -323,36 +359,15 @@ export async function deleteSession(request: Request, env: Env): Promise<void> {
 
 // --- CSRF state helpers ---
 
-export async function createState(env: Env): Promise<string> {
-  const state = randomToken(32);
-  await env.SESSIONS.put(
-    `oauth_state:${state}`,
-    JSON.stringify({ createdAt: Date.now() }),
-    { expirationTtl: STATE_TTL_SECONDS },
-  );
-  return state;
+export function createState(): string {
+  return randomToken(32);
 }
 
-/** Returns true if the state was valid (and consumes it). Constant-time compare. */
-export async function consumeState(env: Env, state: string): Promise<boolean> {
-  const key = `oauth_state:${state}`;
-  const raw = await env.SESSIONS.get(key);
-  if (!raw) return false;
-  // Delete first to prevent replay; compare after to make ordering not leak.
-  await env.SESSIONS.delete(key);
-  let parsed: { createdAt: number };
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return false;
-  }
-  // We only ever store our own state; presence is enough. We do a soft sanity
-  // check on age to defend against clock skew surprises (KV TTL is authoritative).
-  if (typeof parsed.createdAt !== "number") return false;
-  if (Date.now() - parsed.createdAt > STATE_TTL_SECONDS * 1000 + 5_000) {
-    return false;
-  }
-  return true;
+/** True when the state query param matches the state cookie of this browser. */
+export function stateMatchesCookie(request: Request, secure: boolean, state: string): boolean {
+  const expected = parseCookies(request)[stateCookieName(secure)];
+  if (!expected) return false;
+  return timingSafeEqual(expected, state);
 }
 
 // --- Google API helpers ---
@@ -367,9 +382,6 @@ export function buildAuthorizeUrl(
   url.searchParams.set("redirect_uri", `${origin}/api/auth/callback`);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", "openid email profile");
-  // offline + consent guarantees a refresh_token on first authorization.
-  url.searchParams.set("access_type", "offline");
-  url.searchParams.set("prompt", "consent");
   url.searchParams.set("state", state);
   return url.toString();
 }
