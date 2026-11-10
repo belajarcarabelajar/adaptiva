@@ -75,8 +75,8 @@ describe("Gemini proxy request guard", () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
-    // Without this the mocked auth module leaks into the auth test files that
-    // run later in the same `bun test` process.
+    // Resets the per-test mock functions. It does not undo mock.module, so the
+    // Functions suite runs with `bun test --isolate` (see test:functions).
     mock.restore();
   });
 
