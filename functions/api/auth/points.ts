@@ -66,6 +66,19 @@ export async function refundPoints(
   if (!isPositiveAmount(amount)) return { success: false, remainingPoints: 0 };
   const balance = await getBalance(env, userId);
   const remaining = balance + amount;
-  await env.SESSIONS.put(pointsKey(userId), String(remaining));
+  // KV rejects a second write to one key within about a second, and a refund
+  // usually follows the deduction that closely; the failure is logged so the
+  // owner can reconcile, and reported so callers never claim a refund.
+  try {
+    await env.SESSIONS.put(pointsKey(userId), String(remaining));
+  } catch (error) {
+    console.error("Points refund write failed", {
+      userId,
+      amount,
+      balance,
+      error: String(error),
+    });
+    return { success: false, remainingPoints: balance };
+  }
   return { success: true, remainingPoints: remaining };
 }

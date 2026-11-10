@@ -52,6 +52,30 @@ export const ACTION_POINT_COSTS: Record<string, number> = {
   default: 5,
 };
 
+// Upper bound on generationConfig.maxOutputTokens per action, forced by the
+// proxy so a request paying a cheap action price cannot buy a long generation
+// (gemini-2.5-flash otherwise allows 65536). On 2.5 models thinking tokens
+// count against this limit too, so each cap leaves room for dynamic thinking
+// on top of what the web app asks for (apps/web/src/services/gemini/*.ts, none
+// of which sets maxOutputTokens itself):
+//   curriculum  module titles and a 7-day plan as short JSON      -> 16384
+//   module      one full textbook chapter as Markdown in JSON     -> 32768
+//   quiz        10 multiple-choice questions with explanations    -> 16384
+//   exam        user-chosen question count, no UI maximum         -> 32768
+//   flashcard   about 25 term and definition pairs                -> 16384
+//   tutor       one concise chat reply                            -> 8192
+//   default     resource list (books, articles, videos) Markdown  -> 16384
+// Every key of ACTION_POINT_COSTS must have a cap here.
+export const ACTION_OUTPUT_TOKEN_CAPS: Record<string, number> = {
+  curriculum: 16384,
+  module: 32768,
+  quiz: 16384,
+  exam: 32768,
+  flashcard: 16384,
+  tutor: 8192,
+  default: 16384,
+};
+
 import {
   getSession,
   deductUserPoints,
@@ -71,6 +95,50 @@ export function resolveCost(action: string): number | null {
   return Object.hasOwn(ACTION_POINT_COSTS, action)
     ? ACTION_POINT_COSTS[action]
     : null;
+}
+
+export function resolveOutputCap(action: string): number | null {
+  return Object.hasOwn(ACTION_OUTPUT_TOKEN_CAPS, action)
+    ? ACTION_OUTPUT_TOKEN_CAPS[action]
+    : null;
+}
+
+/**
+ * Body with generationConfig.maxOutputTokens at most `cap`: a valid smaller
+ * client value is kept, anything else becomes `cap`. Null when the body is not
+ * a JSON object, since the cap could not be enforced on it.
+ */
+export function capOutputTokens(
+  bodyBuffer: ArrayBuffer | null,
+  cap: number,
+): ArrayBuffer | null {
+  if (!bodyBuffer) return null;
+  let body: unknown;
+  try {
+    body = JSON.parse(new TextDecoder().decode(bodyBuffer));
+  } catch {
+    return null;
+  }
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return null;
+  }
+  const request = body as Record<string, unknown>;
+  const config = request.generationConfig ?? {};
+  if (typeof config !== "object" || config === null || Array.isArray(config)) {
+    return null;
+  }
+  const generationConfig = config as Record<string, unknown>;
+  const requested = generationConfig.maxOutputTokens;
+  const keep =
+    typeof requested === "number" &&
+    Number.isInteger(requested) &&
+    requested > 0 &&
+    requested <= cap;
+  request.generationConfig = {
+    ...generationConfig,
+    maxOutputTokens: keep ? requested : cap,
+  };
+  return new TextEncoder().encode(JSON.stringify(request)).buffer as ArrayBuffer;
 }
 
 type GuardResult =
@@ -233,32 +301,74 @@ async function executeWithRetries(
   return { upstream, lastNetworkError };
 }
 
+// Points actually taken for this request, so an unexpected throw refunds only
+// what was charged and never mints points when the deduction itself failed.
+type Charge = { points: number };
+
+type RefundOutcome = { refunded: boolean; remainingPoints?: number };
+
+/**
+ * Gives back the charge at most once and never reports a refund that did not
+ * land: a failed or throwing refund is logged and the caller shows the
+ * balance as it stands after the deduction.
+ */
+async function refundCharge(
+  request: Request,
+  env: Env,
+  charge: Charge,
+  balanceAfterCharge?: number,
+): Promise<RefundOutcome> {
+  const points = charge.points;
+  charge.points = 0;
+  if (points <= 0) return { refunded: false, remainingPoints: balanceAfterCharge };
+  let error: string | undefined;
+  try {
+    const refund = await refundUserPoints(
+      request,
+      env as unknown as AuthEnv,
+      points,
+    );
+    if (refund.success) {
+      return { refunded: true, remainingPoints: refund.remainingPoints };
+    }
+  } catch (err) {
+    error = String(err);
+  }
+  console.error("Points refund failed", {
+    action: request.headers.get("x-adaptiva-action") || "default",
+    points,
+    error,
+  });
+  return { refunded: false, remainingPoints: balanceAfterCharge };
+}
+
+function refundNote(outcome: RefundOutcome): string {
+  return outcome.refunded
+    ? "Poin Anda telah dikembalikan."
+    : "Poin Anda gagal dikembalikan, silakan hubungi admin.";
+}
+
 async function handleNetworkErrorAndRefund(
   request: Request,
   env: Env,
-  cost: number,
+  charge: Charge,
   currentRemainingPoints: number,
   lastNetworkError: unknown,
 ): Promise<Response> {
-  const refund = await refundUserPoints(
-    request,
-    env as unknown as AuthEnv,
-    cost,
-  );
-  const updatedPoints = refund.success
-    ? refund.remainingPoints
-    : currentRemainingPoints + cost;
+  const outcome = await refundCharge(request, env, charge, currentRemainingPoints);
   return new Response(
     JSON.stringify({
       error: "ai_upstream_network_error",
-      message: "Gagal terhubung ke layanan AI. Poin Anda telah dikembalikan.",
+      message: `Gagal terhubung ke layanan AI. ${refundNote(outcome)}`,
       detail: String(lastNetworkError),
+      refunded: outcome.refunded,
+      remainingPoints: outcome.remainingPoints,
     }),
     {
       status: 400,
       headers: {
         "content-type": "application/json",
-        "x-adaptiva-points": String(updatedPoints),
+        "x-adaptiva-points": String(outcome.remainingPoints),
       },
     },
   );
@@ -268,17 +378,11 @@ async function handleUpstreamErrorAndRefund(
   request: Request,
   env: Env,
   upstream: Response,
-  cost: number,
+  charge: Charge,
   currentRemainingPoints: number,
 ): Promise<Response> {
-  const refund = await refundUserPoints(
-    request,
-    env as unknown as AuthEnv,
-    cost,
-  );
-  const updatedPoints = refund.success
-    ? refund.remainingPoints
-    : currentRemainingPoints + cost;
+  const outcome = await refundCharge(request, env, charge, currentRemainingPoints);
+  const updatedPoints = outcome.remainingPoints;
   const resHeaders = new Headers(upstream.headers);
   resHeaders.set("x-adaptiva-points", String(updatedPoints));
 
@@ -312,18 +416,56 @@ async function handleUpstreamErrorAndRefund(
       error: "ai_generation_failed",
       message:
         errorDetail ||
-        `Layanan AI mengalami kendala (${upstream.status}). Poin Anda telah dikembalikan.`,
+        `Layanan AI mengalami kendala (${upstream.status}). ${refundNote(outcome)}`,
+      refunded: outcome.refunded,
       remainingPoints: updatedPoints,
     }),
     { status: 400, headers: resHeaders },
   );
 }
 
+type UnusableResponse = { billed: boolean; reason: string };
+
+/**
+ * Refund rule: Google does not bill a request that fails (network error,
+ * non-2xx, or a 2xx body holding an error object), so those are refunded.
+ * Every other 2xx is billed, including a blocked prompt (promptFeedback
+ * carries usageMetadata.promptTokenCount) and a candidate stopped by SAFETY,
+ * RECITATION or another filter after tokens were generated, so the charge
+ * stays. MAX_TOKENS passes through as output the client can still use.
+ */
+function classifyUnusable(responseText: string): UnusableResponse | null {
+  let jsonRes: any;
+  try {
+    jsonRes = JSON.parse(responseText);
+  } catch {
+    // Streaming (SSE) and other non-JSON bodies pass through as is.
+    return null;
+  }
+  if (typeof jsonRes !== "object" || jsonRes === null) return null;
+  if (jsonRes.error) {
+    return {
+      billed: false,
+      reason: jsonRes.error.message || "Gagal membuat konten dengan AI.",
+    };
+  }
+  const blockReason = jsonRes.promptFeedback?.blockReason;
+  if (blockReason) return { billed: true, reason: String(blockReason) };
+  if (!Array.isArray(jsonRes.candidates) || jsonRes.candidates.length === 0) {
+    return { billed: true, reason: "NO_CANDIDATES" };
+  }
+  const finishReason = jsonRes.candidates[0]?.finishReason;
+  if (finishReason && finishReason !== "STOP" && finishReason !== "MAX_TOKENS") {
+    return { billed: true, reason: String(finishReason) };
+  }
+  return null;
+}
+
 async function validateSafetyAndRefund(
   request: Request,
   env: Env,
   upstream: Response,
-  cost: number,
+  charge: Charge,
   currentRemainingPoints: number,
 ): Promise<{ response?: Response; responseText: string }> {
   let responseText = "";
@@ -333,68 +475,37 @@ async function validateSafetyAndRefund(
     responseText = "";
   }
 
-  let isBlocked = false;
-  let blockedReason = "";
-  try {
-    if (responseText) {
-      const jsonRes = JSON.parse(responseText);
-      if (jsonRes.error) {
-        isBlocked = true;
-        blockedReason =
-          jsonRes.error.message || "Gagal membuat konten dengan AI.";
-      } else if (
-        Array.isArray(jsonRes.candidates) &&
-        jsonRes.candidates.length > 0
-      ) {
-        const firstCandidate = jsonRes.candidates[0];
-        if (
-          firstCandidate.finishReason &&
-          firstCandidate.finishReason !== "STOP" &&
-          firstCandidate.finishReason !== "MAX_TOKENS"
-        ) {
-          isBlocked = true;
-          blockedReason = `AI terhenti dengan alasan: ${firstCandidate.finishReason}. Poin Anda telah dikembalikan.`;
-        }
-      }
-    }
-  } catch {
-    // If text parsing fails, pass-through response as is
+  const unusable = responseText ? classifyUnusable(responseText) : null;
+  if (!unusable) return { responseText };
+
+  let refunded = false;
+  let updatedPoints: number | undefined = currentRemainingPoints;
+  let message: string;
+  if (unusable.billed) {
+    message = `AI terhenti dengan alasan: ${unusable.reason}. Poin tidak dikembalikan karena layanan AI tetap menagih permintaan ini.`;
+  } else {
+    const outcome = await refundCharge(request, env, charge, currentRemainingPoints);
+    refunded = outcome.refunded;
+    updatedPoints = outcome.remainingPoints;
+    message = `${unusable.reason} ${refundNote(outcome)}`;
   }
 
-  if (isBlocked) {
-    const refund = await refundUserPoints(
-      request,
-      env as unknown as AuthEnv,
-      cost,
-    );
-    const updatedPoints = refund.success
-      ? refund.remainingPoints
-      : currentRemainingPoints + cost;
-    const resHeaders = new Headers(upstream.headers);
-    resHeaders.set("content-type", "application/json");
-    resHeaders.set("x-adaptiva-points", String(updatedPoints));
-
-    return {
-      response: new Response(
-        JSON.stringify({
-          error: "ai_generation_blocked",
-          message:
-            blockedReason ||
-            "Konten AI tidak dapat dibuat. Poin Anda telah dikembalikan.",
-          remainingPoints: updatedPoints,
-        }),
-        { status: 400, headers: resHeaders },
-      ),
-      responseText,
-    };
-  }
-
-  return { responseText };
+  const resHeaders = new Headers(upstream.headers);
+  resHeaders.set("content-type", "application/json");
+  resHeaders.set("x-adaptiva-points", String(updatedPoints));
+  return {
+    response: new Response(
+      JSON.stringify({
+        error: "ai_generation_blocked",
+        message,
+        refunded,
+        remainingPoints: updatedPoints,
+      }),
+      { status: 400, headers: resHeaders },
+    ),
+    responseText,
+  };
 }
-
-// Points actually taken for this request, so an unexpected throw refunds only
-// what was charged and never mints points when the deduction itself failed.
-type Charge = { points: number };
 
 async function proxyRequest(
   request: Request,
@@ -429,6 +540,15 @@ async function proxyRequest(
     return jsonError(413, "payload_too_large");
   }
 
+  const outputCap = resolveOutputCap(action);
+  if (outputCap === null) {
+    return jsonError(400, "unknown_action");
+  }
+  const cappedBody = capOutputTokens(bodyBuffer, outputCap);
+  if (!cappedBody) {
+    return jsonError(400, "unsupported_request");
+  }
+
   const deduction = await processPointDeduction(request, env, cost);
   if (deduction.response) {
     return deduction.response;
@@ -443,14 +563,14 @@ async function proxyRequest(
     url,
     request.method,
     headers,
-    bodyBuffer,
+    cappedBody,
   );
 
   if (!upstream) {
     return handleNetworkErrorAndRefund(
       request,
       env,
-      cost,
+      charge,
       pointResult.remainingPoints,
       lastNetworkError,
     );
@@ -461,7 +581,7 @@ async function proxyRequest(
       request,
       env,
       upstream,
-      cost,
+      charge,
       pointResult.remainingPoints,
     );
   }
@@ -470,7 +590,7 @@ async function proxyRequest(
     request,
     env,
     upstream,
-    cost,
+    charge,
     pointResult.remainingPoints,
   );
   if (safetyValidation.response) {
@@ -534,21 +654,21 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const extra: Record<string, string> = {
       "content-type": "application/json",
     };
-    if (charge.points > 0) {
-      const refund = await refundUserPoints(
-        context.request,
-        context.env as unknown as AuthEnv,
-        charge.points,
-      );
-      extra["x-adaptiva-points"] = String(refund.remainingPoints);
+    const charged = charge.points > 0;
+    const outcome = await refundCharge(context.request, context.env, charge);
+    if (outcome.remainingPoints !== undefined) {
+      extra["x-adaptiva-points"] = String(outcome.remainingPoints);
     }
     const message = err instanceof Error ? err.message : String(err);
     const headers = corsHeaders(context.request, context.env, extra);
     return new Response(
       JSON.stringify({
         error: "Proxy error",
-        message: "Gagal memproses permintaan AI. Poin Anda telah dikembalikan.",
+        message: charged
+          ? `Gagal memproses permintaan AI. ${refundNote(outcome)}`
+          : "Gagal memproses permintaan AI.",
         detail: message,
+        refunded: outcome.refunded,
       }),
       { status: 502, headers },
     );

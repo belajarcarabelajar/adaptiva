@@ -163,7 +163,9 @@ describe("Gemini Proxy [[path]].ts", () => {
     }
   });
 
-  it("should block if AI generation finishReason is SAFETY", async () => {
+  it("should block without refund if AI generation finishReason is SAFETY", async () => {
+    // Module mocks keep their call history across tests in this file.
+    (sharedAuth.refundUserPoints as any).mockClear();
     (sharedAuth.deductUserPoints as any).mockResolvedValue({ success: true, remainingPoints: 95, session: {} as any });
     (sharedAuth.refundUserPoints as any).mockResolvedValue({ success: true, remainingPoints: 100 });
 
@@ -180,7 +182,8 @@ describe("Gemini Proxy [[path]].ts", () => {
     expect(json.error).toBe("ai_generation_blocked");
     expect(json.message).toContain("AI terhenti dengan alasan: SAFETY");
 
-    expect(sharedAuth.refundUserPoints).toHaveBeenCalled();
+    // Google bills a response stopped by a filter, so the charge stays.
+    expect(sharedAuth.refundUserPoints).not.toHaveBeenCalled();
   });
 
   it("should retry transient error statuses", async () => {
