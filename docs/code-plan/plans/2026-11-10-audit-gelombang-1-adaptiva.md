@@ -228,10 +228,10 @@ sequenceDiagram
 - **Interfaces:** Produces the root script `test:functions` = `bun test functions`.
 - **Preconditions:** `bun --version` exits 0 (else `E_PRECOND_DEP`).
 - **Idempotency Check:** skip when `bun run test:functions` exits 0.
-- [ ] **Step 1 (RED):** `bun run test:functions` | expect exit 1 (script missing) | retry 0
-- [ ] **Step 2 (GREEN):** add `"test:functions": "bun test functions"` to the root `package.json` scripts.
-- [ ] **Step 3 (Verify):** `bun run test:functions` | expect exit 0 (baseline 90 pass) | retry 1
-- [ ] **Step 4 (Commit):** `git add package.json` then `git commit -m "test: add test:functions script for Pages Functions"`
+- [x] **Step 1 (RED):** `bun run test:functions` | expect exit 1 (script missing) | retry 0
+- [x] **Step 2 (GREEN):** add `"test:functions": "bun test functions"` to the root `package.json` scripts.
+- [x] **Step 3 (Verify):** `bun run test:functions` | expect exit 0 (baseline 90 pass) | retry 1
+- [x] **Step 4 (Commit):** `git add package.json` then `git commit -m "test: add test:functions script for Pages Functions"`
 
 ### Task T2: cost resolver and request guard in the Gemini proxy
 
@@ -240,10 +240,10 @@ sequenceDiagram
   - Produces: `resolveCost(action: string): number | null` (own-property lookup on `ACTION_POINT_COSTS`, `null` for unknown); `checkUpstreamRequest(request, params): { ok: true } | { ok: false, status: 400 | 405 | 413, error: string }`; `buildUpstreamHeaders` returning only `content-type`, `x-goog-api-key`, and `x-goog-api-client` when present.
 - **Preconditions:** T1 done (`bun run test:functions` exits 0, else `E_PRECOND_UPSTREAM`).
 - **Rules:** method `POST` only; path must match `^v1beta/models/gemini-2\.5-flash:(generateContent|streamGenerateContent)$`; query empty or exactly `alt=sse`; body over 1,048,576 bytes gets 413 (check `content-length` first, then the buffered length); all checks run before `processPointDeduction`; the catch-block refund uses `resolveCost` and refunds nothing for an unknown action; CORS `Access-Control-Allow-Methods: POST, OPTIONS`.
-- [ ] **Step 1 (RED):** write `functions/api/gemini/__tests__/request-guard.test.ts` with cases: `constructor`, `__proto__`, `toString`, `nope` → 400 and the deduct mock not called; `GET` → 405; `gemini-2.5-pro:generateContent` → 400; `v1beta/files` → 400; `?key=x` → 400; `?alt=sse` streaming path → forwarded; 1 MB + 1 body → 413; a request with `cookie: adaptiva_sess=x` reaches `fetch` without a `cookie` header. Run `bun test functions/api/gemini/__tests__/request-guard.test.ts` | expect exit 1 | retry 0
-- [ ] **Step 2 (GREEN):** implement the rules in `[[path]].ts`; update the fixtures in `[[path]].test.ts` from `gemini-1.5-flash` with `?key=value` to `gemini-2.5-flash:generateContent` with no query.
-- [ ] **Step 3 (Verify):** `bun test functions/api/gemini` | expect exit 0 | retry 1
-- [ ] **Step 4 (Commit):** `git add "functions/api/gemini/[[path]].ts" "functions/api/gemini/__tests__/[[path]].test.ts" functions/api/gemini/__tests__/request-guard.test.ts` then `git commit -m "fix(gemini): validate action cost and restrict proxied requests"`
+- [x] **Step 1 (RED):** write `functions/api/gemini/__tests__/request-guard.test.ts` with cases: `constructor`, `__proto__`, `toString`, `nope` → 400 and the deduct mock not called; `GET` → 405; `gemini-2.5-pro:generateContent` → 400; `v1beta/files` → 400; `?key=x` → 400; `?alt=sse` streaming path → forwarded; 1 MB + 1 body → 413; a request with `cookie: adaptiva_sess=x` reaches `fetch` without a `cookie` header. Run `bun test functions/api/gemini/__tests__/request-guard.test.ts` | expect exit 1 | retry 0
+- [x] **Step 2 (GREEN):** implement the rules in `[[path]].ts`; update the fixtures in `[[path]].test.ts` from `gemini-1.5-flash` with `?key=value` to `gemini-2.5-flash:generateContent` with no query.
+- [x] **Step 3 (Verify):** `bun test functions/api/gemini` | expect exit 0 | retry 1
+- [x] **Step 4 (Commit):** `git add "functions/api/gemini/[[path]].ts" "functions/api/gemini/__tests__/[[path]].test.ts" functions/api/gemini/__tests__/request-guard.test.ts` then `git commit -m "fix(gemini): validate action cost and restrict proxied requests"`
 
 ### Task T3: per-account point ledger
 
@@ -252,26 +252,26 @@ sequenceDiagram
   - `deductUserPoints` and `refundUserPoints` in `_shared.ts` keep their signatures and return shapes, resolve `sess:<sid>` to `session.userId`, and delegate to the ledger. `createSession` stops writing `points` and writes `refreshedAt`. `getSession` writes the session back only when `refreshedAt` is missing or older than 24 hours, and never touches `points:*`.
   - `me.ts` returns `points: await getBalance(env, session.userId)`.
 - **Preconditions:** T1 done (else `E_PRECOND_UPSTREAM`).
-- [ ] **Step 1 (RED):** write `functions/api/auth/__tests__/points.test.ts` over a `Map`-backed fake KV: two sessions with the same `userId` share one balance (spend 100 on the first, the second sees 0); seed happens once; `deductPoints(env, id, Object as any)` and `deductPoints(env, id, NaN)` return `success:false` without a write; a stored `"null"` balance refuses to deduct; refund adds back; `getSession` on a fresh `refreshedAt` performs no `put`. Run `bun test functions/api/auth/__tests__/points.test.ts` | expect exit 1 | retry 0
-- [ ] **Step 2 (GREEN):** add `points.ts`; change `_shared.ts` and `me.ts`; update the existing auth tests that assume the balance lives in the session.
-- [ ] **Step 3 (Verify):** `bun test functions/api/auth` | expect exit 0 | retry 1
-- [ ] **Step 4 (Commit):** `git add functions/api/auth/points.ts functions/api/auth/__tests__/points.test.ts functions/api/auth/_shared.ts functions/api/auth/me.ts functions/api/auth/_shared.test.ts functions/api/auth/__tests__/_shared.test.ts functions/api/auth/__tests__/me.test.ts` then `git commit -m "fix(auth): keep the point balance per account instead of per session"`
+- [x] **Step 1 (RED):** write `functions/api/auth/__tests__/points.test.ts` over a `Map`-backed fake KV: two sessions with the same `userId` share one balance (spend 100 on the first, the second sees 0); seed happens once; `deductPoints(env, id, Object as any)` and `deductPoints(env, id, NaN)` return `success:false` without a write; a stored `"null"` balance refuses to deduct; refund adds back; `getSession` on a fresh `refreshedAt` performs no `put`. Run `bun test functions/api/auth/__tests__/points.test.ts` | expect exit 1 | retry 0
+- [x] **Step 2 (GREEN):** add `points.ts`; change `_shared.ts` and `me.ts`; update the existing auth tests that assume the balance lives in the session.
+- [x] **Step 3 (Verify):** `bun test functions/api/auth` | expect exit 0 | retry 1
+- [x] **Step 4 (Commit):** `git add functions/api/auth/points.ts functions/api/auth/__tests__/points.test.ts functions/api/auth/_shared.ts functions/api/auth/me.ts functions/api/auth/_shared.test.ts functions/api/auth/__tests__/_shared.test.ts functions/api/auth/__tests__/me.test.ts` then `git commit -m "fix(auth): keep the point balance per account instead of per session"`
 
 ### Task T4: loopback dev servers
 
 - **Interfaces:** Produces `resolveListenHost(env: Record<string, string | undefined>): string` in `apps/api/src/listen-host.js` (returns `env.HOST` when non-empty, else `127.0.0.1`); `server.js` calls `app.listen(port, resolveListenHost(process.env))`; `apps/web/vite.config.ts` drops `host: '0.0.0.0'`.
-- [ ] **Step 1 (RED):** write `apps/api/src/listen-host.test.js` (default `127.0.0.1`, blank `HOST` → `127.0.0.1`, `HOST=0.0.0.0` honoured) and `apps/web/src/devServer.test.ts` (imports `../vite.config` and asserts `server.host` is undefined or a loopback address). Run `bun test apps/api/src/listen-host.test.js` | expect exit 1 | retry 0
-- [ ] **Step 2 (GREEN):** add `listen-host.js`, wire it into `server.js`, edit `vite.config.ts`; adjust the README dev section if it promises LAN access.
-- [ ] **Step 3 (Verify):** `bun test apps/api/src/listen-host.test.js` exit 0, then `bun run --cwd apps/web test src/devServer.test.ts` exit 0 | retry 1
-- [ ] **Step 4 (Commit):** `git add apps/api/src/listen-host.js apps/api/src/listen-host.test.js apps/api/src/server.js apps/web/vite.config.ts apps/web/src/devServer.test.ts` then `git commit -m "fix(dev): bind Express and Vite dev servers to loopback"`
+- [x] **Step 1 (RED):** write `apps/api/src/listen-host.test.js` (default `127.0.0.1`, blank `HOST` → `127.0.0.1`, `HOST=0.0.0.0` honoured) and `apps/web/src/devServer.test.ts` (imports `../vite.config` and asserts `server.host` is undefined or a loopback address). Run `bun test apps/api/src/listen-host.test.js` | expect exit 1 | retry 0
+- [x] **Step 2 (GREEN):** add `listen-host.js`, wire it into `server.js`, edit `vite.config.ts`; adjust the README dev section if it promises LAN access.
+- [x] **Step 3 (Verify):** `bun test apps/api/src/listen-host.test.js` exit 0, then `bun run --cwd apps/web test src/devServer.test.ts` exit 0 | retry 1
+- [x] **Step 4 (Commit):** `git add apps/api/src/listen-host.js apps/api/src/listen-host.test.js apps/api/src/server.js apps/web/vite.config.ts apps/web/src/devServer.test.ts` then `git commit -m "fix(dev): bind Express and Vite dev servers to loopback"`
 
 ### Task T5: Vite 6.4.6
 
 - **Preconditions:** `bun pm view vitest@5.0.0 peerDependencies` includes a vite range that admits 6.4.6 (else `E_PRECOND_DEP`, record in §6, stop this task only).
-- [ ] **Step 1 (RED):** the `bun -e` lockfile check | expect exit 1 (lock holds 6.4.3) | retry 0
-- [ ] **Step 2 (GREEN):** set `"vite": "^6.4.6"` in `apps/web/package.json`, then `bun install --lockfile-only` (local, writes `bun.lock` only) | expect exit 0 | retry 1
-- [ ] **Step 3 (Verify):** the `bun -e` lockfile check | expect exit 0 | retry 0
-- [ ] **Step 4 (Commit):** `git add apps/web/package.json bun.lock` then `git commit -m "chore(deps): bump vite to 6.4.6 for dev server advisories"`
+- [x] **Step 1 (RED):** the `bun -e` lockfile check | expect exit 1 (lock holds 6.4.3) | retry 0
+- [x] **Step 2 (GREEN):** set `"vite": "^6.4.6"` in `apps/web/package.json`, then `bun install --lockfile-only` (local, writes `bun.lock` only) | expect exit 0 | retry 1
+- [x] **Step 3 (Verify):** the `bun -e` lockfile check | expect exit 0 | retry 0
+- [x] **Step 4 (Commit):** `git add apps/web/package.json bun.lock` then `git commit -m "chore(deps): bump vite to 6.4.6 for dev server advisories"`
 
 ### Task T6: full verification
 
@@ -317,10 +317,17 @@ Assumptions recorded: quota key = Google `sub` with the existing email fallback;
 | F1 | Charge by `usageMetadata` so a client cannot claim the cheaper `tutor` price | `LATER` | `defer: owner decision on billing model, next abuse signal in Gemini usage` | `OPEN` |
 | F2 | Medium and low findings of the 2026-11-09 audit (`temuan-adaptiva.json`, `l2-adaptiva.json`) | `LATER` | `defer: wave 3 sweep, owner schedules it` | `OPEN` |
 | F3 | Run `test:functions` inside `scripts/deploy-website.sh` before deploy | `LATER` | `defer: next deploy-script change, or first function regression` | `OPEN` |
-| F4 | `onRequest` catch block refunds even when no deduction happened (for example a KV error inside `deductUserPoints`); record whether the deduction ran | `NOW` | | `OPEN` |
-| F5 | Web typecheck red on `main` (196 errors, untyped jest-dom matchers in existing tests); fix the test typing in its own PR so T6 can pass | `NOW` | | `OPEN` |
+| F4 | `onRequest` catch block refunds even when no deduction happened (for example a KV error inside `deductUserPoints`); record whether the deduction ran | `NOW` | | `DONE` (commit `da83402`: RED exit 1, `bun run test:functions` exit 0, 129 pass) |
+| F5 | Web typecheck red on `main` (196 errors, untyped jest-dom matchers in existing tests); fix the test typing in its own PR so T6 can pass | `NOW` | | `DONE` in PR #66 (`66e3c2a`: tsc exit 0, 0 errors; `bun run test` exit 0, 26 files); T6 turns green once #66 is merged into this branch |
 | F6 | Express dev proxy (`apps/api`) still injects the key without auth when someone sets `HOST=0.0.0.0` | `LATER` | `defer: apps/api is dev-only, next dev-tooling change` | `OPEN` |
 
-- [ ] 3-5 ranked follow-ups injected as one question-tool call of multi-select checkboxes after the final recap.
+- [x] 3-5 ranked follow-ups injected as one question-tool call of multi-select checkboxes after the final recap (4 offered, 4 selected, 2026-11-10).
 - [ ] Every selected follow-up executed through the full pipeline with fresh evidence.
 - [ ] Declined and out-of-cap items written here so no debt leaves the session unrecorded.
+
+## Closeout status
+
+- **Decision:** `Keep it open` (`Close plan` gate, 2026-11-10).
+- **Readiness:** `bun scripts/plan-closeout.mjs --readiness` → `NOT-READY` (exit 1): T1-T5 `DONE`, T6 `UNPROVEN` (typecheck step red on `main`).
+- **Remains:** T6 step 3 (typecheck) until PR #66 lands; then merge `origin/main` into this branch and re-run T6.
+- **Reopen trigger:** PR #66 merged.
