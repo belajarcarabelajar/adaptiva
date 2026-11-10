@@ -26,8 +26,8 @@ describe("Gemini Proxy [[path]].ts", () => {
 
     mockContext = {
       env: mockEnv,
-      params: { path: ["v1beta", "models", "gemini-1.5-flash:generateContent"] },
-      request: new Request("https://adaptiva.app/api/gemini/v1beta/models/gemini-1.5-flash:generateContent?key=value", {
+      params: { path: ["v1beta", "models", "gemini-2.5-flash:generateContent"] },
+      request: new Request("https://adaptiva.app/api/gemini/v1beta/models/gemini-2.5-flash:generateContent", {
         method: "POST",
         headers: new Headers({
           "content-type": "application/json",
@@ -54,7 +54,7 @@ describe("Gemini Proxy [[path]].ts", () => {
     const response = await onRequest(mockContext as any);
     expect(response.status).toBe(204);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
-    expect(response.headers.get("Access-Control-Allow-Methods")).toBe("GET, POST, PUT, DELETE, OPTIONS");
+    expect(response.headers.get("Access-Control-Allow-Methods")).toBe("POST, OPTIONS");
   });
 
   it("should return 500 if GEMINI_API_KEY is not configured", async () => {
@@ -104,7 +104,7 @@ describe("Gemini Proxy [[path]].ts", () => {
 
     expect((global.fetch as any).mock.calls.length).toBe(1);
     const fetchArgs = (global.fetch as any).mock.calls[0];
-    expect(fetchArgs[0]).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=value");
+    expect(fetchArgs[0]).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent");
     expect((fetchArgs[1]?.headers as Headers).get("x-goog-api-key")).toBe("test-api-key");
   });
 

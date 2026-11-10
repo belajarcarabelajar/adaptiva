@@ -12,9 +12,9 @@
 //   GEMINI_MODEL_DEFAULT(optional)  - default model hint, NOT used to rewrite URLs
 //
 // The SDK in the browser chooses the model per-call and constructs the URL
-// (e.g. /v1beta/models/gemini-2.5-flash:generateContent). We forward whatever
-// path the SDK gives us, so adding a new model on the frontend needs no
-// change here.
+// (e.g. /v1beta/models/gemini-2.5-flash:generateContent). Only the paths in
+// ALLOWED_UPSTREAM_PATH are forwarded, so a new model on the frontend must be
+// added there too.
 
 // Self-contained context type so this file has no runtime dependencies on
 // @cloudflare/workers-types. Mirrors the PagesFunction context shape.
@@ -59,6 +59,55 @@ import {
   type Env as AuthEnv,
 } from "../auth/_shared";
 
+export const MAX_BODY_BYTES = 1048576;
+
+const ALLOWED_UPSTREAM_PATH =
+  /^v1beta\/models\/gemini-2\.5-flash:(generateContent|streamGenerateContent)$/;
+
+// Own-property lookup: a plain object lookup would resolve names such as
+// "constructor" to Object.prototype members, and a NaN cost passes every
+// balance comparison.
+export function resolveCost(action: string): number | null {
+  return Object.hasOwn(ACTION_POINT_COSTS, action)
+    ? ACTION_POINT_COSTS[action]
+    : null;
+}
+
+type GuardResult =
+  | { ok: true }
+  | { ok: false; status: 400 | 405 | 413; error: string };
+
+export function checkUpstreamRequest(
+  request: Request,
+  params: PagesContext["params"],
+): GuardResult {
+  if (request.method !== "POST") {
+    return { ok: false, status: 405, error: "method_not_allowed" };
+  }
+  const path = Array.isArray(params.path)
+    ? params.path.join("/")
+    : (params.path ?? "");
+  if (!ALLOWED_UPSTREAM_PATH.test(path)) {
+    return { ok: false, status: 400, error: "unsupported_request" };
+  }
+  const query = new URL(request.url).search.replace(/^\?/, "");
+  if (query !== "" && query !== "alt=sse") {
+    return { ok: false, status: 400, error: "unsupported_request" };
+  }
+  const declaredLength = Number(request.headers.get("content-length") ?? 0);
+  if (declaredLength > MAX_BODY_BYTES) {
+    return { ok: false, status: 413, error: "payload_too_large" };
+  }
+  return { ok: true };
+}
+
+function jsonError(status: number, error: string): Response {
+  return new Response(JSON.stringify({ error }), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 // Strip the /api/gemini prefix that triggered this Function.
 // `params.path` is the array of path segments AFTER the [[path]] wildcard.
 function buildUpstreamUrl(
@@ -73,12 +122,15 @@ function buildUpstreamUrl(
   return `${base}/${path}${search}`;
 }
 
+// Allowlist rather than copy: the browser request carries the session cookie,
+// which must never reach Google.
 function buildUpstreamHeaders(request: Request, apiKey: string): Headers {
-  const headers = new Headers(request.headers);
-  // Replace any key the SDK might have set with the real one from the secret.
+  const headers = new Headers();
+  const contentType = request.headers.get("content-type");
+  if (contentType) headers.set("content-type", contentType);
+  const apiClient = request.headers.get("x-goog-api-client");
+  if (apiClient) headers.set("x-goog-api-client", apiClient);
   headers.set("x-goog-api-key", apiKey);
-  // `host` would be wrong upstream; let fetch set it.
-  headers.delete("host");
   return headers;
 }
 
@@ -354,9 +406,23 @@ async function proxyRequest(
     );
   }
 
-  // Determine point cost from x-adaptiva-action header
+  const guard = checkUpstreamRequest(request, params);
+  if (!guard.ok) {
+    return jsonError(guard.status, guard.error);
+  }
+
   const action = request.headers.get("x-adaptiva-action") || "default";
-  const cost = ACTION_POINT_COSTS[action] ?? 5;
+  const cost = resolveCost(action);
+  if (cost === null) {
+    return jsonError(400, "unknown_action");
+  }
+
+  // The declared content-length can be absent or wrong, so the buffered size
+  // is checked too, still before any points are taken.
+  const bodyBuffer = await extractBodyBuffer(request);
+  if (bodyBuffer && bodyBuffer.byteLength > MAX_BODY_BYTES) {
+    return jsonError(413, "payload_too_large");
+  }
 
   const deduction = await processPointDeduction(request, env, cost);
   if (deduction.response) {
@@ -366,7 +432,6 @@ async function proxyRequest(
 
   const url = buildUpstreamUrl(request, params);
   const headers = buildUpstreamHeaders(request, env.GEMINI_API_KEY);
-  const bodyBuffer = await extractBodyBuffer(request);
 
   const { upstream, lastNetworkError } = await executeWithRetries(
     url,
@@ -424,10 +489,7 @@ function corsHeaders(
   const origin = getAllowedOrigin(request, env as any);
   headers.set("Access-Control-Allow-Origin", origin);
   headers.set("Access-Control-Allow-Credentials", "true");
-  headers.set(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS",
-  );
+  headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
   headers.set(
     "Access-Control-Allow-Headers",
     "Content-Type, Authorization, x-adaptiva-action, x-goog-api-key",
@@ -436,7 +498,7 @@ function corsHeaders(
   return headers;
 }
 
-// Handle every method on the wildcard path: GET, POST, OPTIONS, etc.
+// OPTIONS answers the preflight; every other method goes through the guard.
 export const onRequest: PagesFunction<Env> = async (context) => {
   if (context.request.method === "OPTIONS") {
     return new Response(null, {
@@ -463,17 +525,20 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   } catch (err) {
     const action =
       context.request.headers.get("x-adaptiva-action") || "default";
-    const cost = ACTION_POINT_COSTS[action] ?? 5;
-    const refund = await refundUserPoints(
-      context.request,
-      context.env as unknown as AuthEnv,
-      cost,
-    );
-    const message = err instanceof Error ? err.message : String(err);
-    const headers = corsHeaders(context.request, context.env, {
+    const cost = resolveCost(action);
+    const extra: Record<string, string> = {
       "content-type": "application/json",
-      "x-adaptiva-points": String(refund.remainingPoints),
-    });
+    };
+    if (cost !== null) {
+      const refund = await refundUserPoints(
+        context.request,
+        context.env as unknown as AuthEnv,
+        cost,
+      );
+      extra["x-adaptiva-points"] = String(refund.remainingPoints);
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    const headers = corsHeaders(context.request, context.env, extra);
     return new Response(
       JSON.stringify({
         error: "Proxy error",
