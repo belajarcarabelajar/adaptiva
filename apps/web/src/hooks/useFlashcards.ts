@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import type React from 'react';
 import {
   FlashcardDeck,
@@ -38,6 +38,12 @@ export function useFlashcards(
   const [matchGameStartTime, setMatchGameStartTime] = useState<number | null>(null);
   const [matchGameTimeElapsed, setMatchGameTimeElapsed] = useState<number>(0);
   const matchGameTimerIntervalIdRef = useRef<number | null>(null);
+
+  // Latest selected session, read after async work to detect a session switch.
+  const selectedHistoryItemIdRef = useRef(selectedHistoryItemId);
+  useEffect(() => {
+    selectedHistoryItemIdRef.current = selectedHistoryItemId;
+  }, [selectedHistoryItemId]);
 
   // --- Helpers ---
 
@@ -328,6 +334,8 @@ export function useFlashcards(
       setError('Cannot generate flashcards: Active module information or learning session is missing.');
       return;
     }
+    const originSessionId = selectedHistoryItemId;
+    const moduleTitle = activeFlashcardModuleInfo.title;
     setIsGeneratingFlashcards(true);
     setError(null);
 
@@ -351,22 +359,42 @@ export function useFlashcards(
           moduleId: activeFlashcardModuleInfo.title,
         }));
 
+        const withNewCards = (decks: Record<string, FlashcardDeck>): Record<string, FlashcardDeck> => ({
+          ...decks,
+          [moduleTitle]: {
+            moduleId: moduleTitle,
+            moduleTitle,
+            cards: [...(decks[moduleTitle]?.cards || []), ...newCards],
+          },
+        });
+
+        // The user may have opened another session while the AI request ran: then the
+        // in-memory decks belong to that session, so only the origin session's history is updated.
+        if (selectedHistoryItemIdRef.current !== originSessionId) {
+          setHistoryItems(prevHist => {
+            const itemIndex = prevHist.findIndex(h => h.id === originSessionId);
+            if (itemIndex === -1) return prevHist;
+            const newItems = [...prevHist];
+            newItems[itemIndex] = {
+              ...prevHist[itemIndex],
+              flashcardDecks: withNewCards(prevHist[itemIndex].flashcardDecks || {}),
+            };
+            return newItems;
+          });
+          return;
+        }
+
         setFlashcardDecks(prevDecks => {
-          const updatedDeck: FlashcardDeck = {
-            moduleId: activeFlashcardModuleInfo.title,
-            moduleTitle: activeFlashcardModuleInfo.title,
-            cards: [...(prevDecks[activeFlashcardModuleInfo.title]?.cards || []), ...newCards],
-          };
-          const newDecks = { ...prevDecks, [activeFlashcardModuleInfo.title]: updatedDeck };
+          const newDecks = withNewCards(prevDecks);
 
           setHistoryItems(prevHist => {
-            const itemIndex = prevHist.findIndex(h => h.id === selectedHistoryItemId);
+            const itemIndex = prevHist.findIndex(h => h.id === originSessionId);
             if (itemIndex === -1) return prevHist;
             const newItems = [...prevHist];
             newItems[itemIndex] = { ...prevHist[itemIndex], flashcardDecks: newDecks };
             return newItems;
           });
-          setCurrentFlashcardDeck(updatedDeck);
+          setCurrentFlashcardDeck(newDecks[moduleTitle]);
           return newDecks;
         });
       } else {
