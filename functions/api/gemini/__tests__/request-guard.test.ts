@@ -115,6 +115,29 @@ describe("Gemini proxy request guard", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("does not refund when the deduction itself threw", async () => {
+    deductMock.mockRejectedValue(new Error("kv unavailable"));
+    const res = await onRequest(makeContext() as any);
+    expect(res.status).toBe(502);
+    expect(refundMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refunds the charged cost exactly once when the upstream call fails", async () => {
+    fetchMock.mockImplementation(() => {
+      throw new Error("fetch exploded synchronously");
+    });
+    const res = await onRequest(
+      makeContext({ headers: { "x-adaptiva-action": "quiz" } }) as any,
+    );
+    expect(res.status).not.toBe(200);
+    const refunded = refundMock.mock.calls.reduce(
+      (sum: number, call: any[]) => sum + call[2],
+      0,
+    );
+    expect(refunded).toBe(10);
+  });
+
   it("treats a missing action header as default", async () => {
     const res = await onRequest(makeContext() as any);
     expect(res.status).toBe(200);

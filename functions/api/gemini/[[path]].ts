@@ -392,10 +392,15 @@ async function validateSafetyAndRefund(
   return { responseText };
 }
 
+// Points actually taken for this request, so an unexpected throw refunds only
+// what was charged and never mints points when the deduction itself failed.
+type Charge = { points: number };
+
 async function proxyRequest(
   request: Request,
   env: Env,
   params: PagesContext["params"],
+  charge: Charge,
 ): Promise<Response> {
   if (!env.GEMINI_API_KEY) {
     return new Response(
@@ -429,6 +434,7 @@ async function proxyRequest(
     return deduction.response;
   }
   const pointResult = deduction.pointResult!;
+  charge.points = cost;
 
   const url = buildUpstreamUrl(request, params);
   const headers = buildUpstreamHeaders(request, env.GEMINI_API_KEY);
@@ -507,11 +513,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     });
   }
 
+  const charge: Charge = { points: 0 };
   try {
     const res = await proxyRequest(
       context.request,
       context.env,
       context.params,
+      charge,
     );
     const headers = corsHeaders(
       context.request,
@@ -523,17 +531,14 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       headers,
     });
   } catch (err) {
-    const action =
-      context.request.headers.get("x-adaptiva-action") || "default";
-    const cost = resolveCost(action);
     const extra: Record<string, string> = {
       "content-type": "application/json",
     };
-    if (cost !== null) {
+    if (charge.points > 0) {
       const refund = await refundUserPoints(
         context.request,
         context.env as unknown as AuthEnv,
-        cost,
+        charge.points,
       );
       extra["x-adaptiva-points"] = String(refund.remainingPoints);
     }
