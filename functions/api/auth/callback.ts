@@ -1,13 +1,12 @@
 // Pages Function: OAuth callback handler.
-// - Verifies the CSRF state (one-shot, KV-backed).
+// - Verifies the CSRF state against the browser's state cookie, then clears it.
 // - Exchanges the authorization code for tokens.
 // - Creates a server session in KV and sets an HttpOnly cookie.
 // - Redirects to / (or to ?next=... if provided and same-origin).
 
 import {
-  buildClearCookie,
+  buildClearStateCookie,
   buildSessionCookie,
-  consumeState,
   createSession,
   decodeIdTokenUnsafe,
   exchangeCode,
@@ -15,7 +14,8 @@ import {
   getOrigin,
   isEmailAllowed,
   isHttps,
-  redirectResponse,
+  redirectResponse as baseRedirect,
+  stateMatchesCookie,
   type Env,
   type PagesFunction,
   type Session,
@@ -52,6 +52,12 @@ function safeNext(raw: string | null): string {
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
+  const secure = isHttps(context.request, context.env);
+  const clearState = buildClearStateCookie(secure);
+  // The state cookie is single use: every outcome of the callback drops it.
+  const redirectResponse = (location: string) =>
+    baseRedirect(location, 302, { "Set-Cookie": clearState });
+
   try {
     const { env, request } = context;
 
@@ -73,8 +79,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       return redirectResponse("/?auth_error=missing_code_or_state");
     }
 
-    // One-shot, constant-time state check. consumeState deletes the key.
-    if (!(await consumeState(env, state))) {
+    // Constant-time compare against the cookie set by /api/auth/login in this
+    // browser, so a callback URL minted by someone else is rejected.
+    if (!stateMatchesCookie(request, secure, state)) {
       return redirectResponse("/?auth_error=invalid_or_expired_state");
     }
 
@@ -117,14 +124,11 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       email: user.email,
       name: user.name || user.email,
       picture: user.picture,
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresAt: now + (tokens.expires_in || 3600) * 1000,
       createdAt: now,
     };
 
     const sid = await createSession(env, session);
-    const cookie = buildSessionCookie(sid, isHttps(request, env));
+    const cookie = buildSessionCookie(sid, secure);
 
     const html = `<!DOCTYPE html>
 <html>
@@ -144,6 +148,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       "content-type": "text/html; charset=utf-8",
       "Set-Cookie": cookie,
     });
+    headers.append("Set-Cookie", clearState);
 
     return new Response(html, { status: 200, headers });
   } catch (err) {

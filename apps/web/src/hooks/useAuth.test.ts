@@ -112,7 +112,7 @@ describe("useAuth hook", () => {
     });
   });
 
-  it("parses access_denied and invalid_state auth_error variants", async () => {
+  it("parses the access_denied auth_error variant", async () => {
     window.history.pushState({}, "", "/?auth_error=access_denied");
 
     globalThis.fetch = vi.fn().mockResolvedValue({
@@ -124,6 +124,21 @@ describe("useAuth hook", () => {
 
     await waitFor(() => {
       expect(result.current.error).toBe("Sign-in request was cancelled or denied.");
+    });
+  });
+
+  it("shows the expired-session message for the callback's invalid_or_expired_state code", async () => {
+    window.history.pushState({}, "", "/?auth_error=invalid_or_expired_state");
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+    } as Response);
+
+    const { result } = renderHook(() => useAuth());
+
+    await waitFor(() => {
+      expect(result.current.error).toBe("Sign-in session expired. Please try again.");
     });
   });
 

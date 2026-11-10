@@ -3,6 +3,30 @@ import { onRequestGet } from "../callback";
 import type { Env } from "../_shared";
 
 const originalFetch = global.fetch;
+const STATE_COOKIE_HTTPS = "__Host-adaptiva_oauth_state";
+const STATE_COOKIE_HTTP = "adaptiva_oauth_state";
+
+const mockHappyFetch = () => {
+  (global.fetch as any)
+    .mockResolvedValueOnce({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        access_token: "access-secret",
+        refresh_token: "refresh-secret",
+        expires_in: 3600,
+        id_token: "id",
+      }),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        sub: "123",
+        email: "user@example.com",
+        email_verified: true,
+        name: "User",
+      }),
+    });
+};
 
 describe("callback handler", () => {
   let mockEnv: Env;
@@ -31,9 +55,10 @@ describe("callback handler", () => {
     global.fetch = originalFetch;
   });
 
-  const createMockContext = (url: string) => {
+  // Every https test request carries the browser-bound state cookie for state=valid.
+  const createMockContext = (url: string, cookie: string | null = `${STATE_COOKIE_HTTPS}=valid`) => {
     return {
-      request: new Request(url),
+      request: new Request(url, cookie ? { headers: { cookie } } : undefined),
       env: mockEnv,
       params: {},
       data: {},
@@ -325,5 +350,69 @@ describe("callback handler", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("window.location.replace(\"/\")");
+  });
+  it("rejects a valid code and state when the browser has no state cookie (login CSRF)", async () => {
+    const ctx = createMockContext("https://example.com/api/auth/callback?code=foo&state=valid", null);
+    mockEnv.SESSIONS.get = vi.fn().mockResolvedValue(JSON.stringify({ createdAt: Date.now() }));
+    mockHappyFetch();
+
+    const res = await onRequestGet(ctx) as Response;
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/?auth_error=invalid_or_expired_state");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a state that differs from the state cookie", async () => {
+    const ctx = createMockContext(
+      "https://example.com/api/auth/callback?code=foo&state=attacker",
+      `${STATE_COOKIE_HTTPS}=victim`,
+    );
+    mockEnv.SESSIONS.get = vi.fn().mockResolvedValue(JSON.stringify({ createdAt: Date.now() }));
+    mockHappyFetch();
+
+    const res = await onRequestGet(ctx) as Response;
+    expect(res.headers.get("Location")).toBe("/?auth_error=invalid_or_expired_state");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("clears the state cookie on an error redirect", async () => {
+    const ctx = createMockContext("https://example.com/api/auth/callback?error=access_denied");
+
+    const res = await onRequestGet(ctx) as Response;
+    const cleared = res.headers.getSetCookie().find((c) => c.startsWith(`${STATE_COOKIE_HTTPS}=;`));
+    expect(cleared).toBeDefined();
+    expect(cleared).toContain("Max-Age=0");
+  });
+
+  it("signs in with the state cookie, clears it, and stores no Google tokens", async () => {
+    const ctx = createMockContext("https://example.com/api/auth/callback?code=foo&state=valid");
+    mockHappyFetch();
+
+    const res = await onRequestGet(ctx) as Response;
+    expect(res.status).toBe(200);
+
+    const setCookies = res.headers.getSetCookie();
+    expect(setCookies.some((c) => c.startsWith("adaptiva_sess="))).toBe(true);
+    expect(setCookies.some((c) => c.startsWith(`${STATE_COOKIE_HTTPS}=;`) && c.includes("Max-Age=0"))).toBe(true);
+
+    const puts = (mockEnv.SESSIONS.put as any).mock.calls as [string, string][];
+    expect(puts.map(([key]) => key.split(":")[0])).toEqual(["sess"]);
+    const stored = JSON.parse(puts[0][1]);
+    expect(stored).not.toHaveProperty("accessToken");
+    expect(stored).not.toHaveProperty("refreshToken");
+    expect(puts[0][1]).not.toContain("access-secret");
+    expect(puts[0][1]).not.toContain("refresh-secret");
+    expect(stored).toMatchObject({ userId: "123", email: "user@example.com", name: "User" });
+  });
+
+  it("accepts the unprefixed state cookie on plain http (local dev)", async () => {
+    const ctx = createMockContext(
+      "http://localhost:3000/api/auth/callback?code=foo&state=devstate",
+      `${STATE_COOKIE_HTTP}=devstate`,
+    );
+    mockHappyFetch();
+
+    const res = await onRequestGet(ctx) as Response;
+    expect(res.status).toBe(200);
   });
 });

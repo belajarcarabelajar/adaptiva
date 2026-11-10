@@ -3,7 +3,6 @@ import type { Env } from "./_shared";
 import {
   buildClearCookie,
   buildSessionCookie,
-  consumeState,
   decodeIdTokenUnsafe,
   getOrigin,
   getSession,
@@ -184,6 +183,28 @@ describe("parseCookies", () => {
   it("should ignore malformed cookie pairs without equal sign or empty key", () => {
     const result = parseCookies("malformed_cookie; =empty_key; valid=value");
     expect(result).toEqual({ valid: "value" });
+  });
+
+  it("skips a value with a malformed percent escape and keeps the other cookies", () => {
+    const result = parseCookies("tracker=%E0%A4%A; adaptiva_sess=abc; other=100%");
+    expect(result).toEqual({ adaptiva_sess: "abc" });
+  });
+});
+
+describe("getSession with a malformed unrelated cookie", () => {
+  it("still resolves the session instead of throwing", async () => {
+    const stored = { userId: "u1", email: "a@b.c", name: "A", createdAt: 1, refreshedAt: Date.now() };
+    const mockEnv = {
+      SESSIONS: {
+        get: vi.fn(async () => JSON.stringify(stored)),
+        put: vi.fn(async () => {}),
+        delete: vi.fn(async () => {}),
+      },
+    } as unknown as Env;
+    const request = new Request("https://example.com/api/auth/me", {
+      headers: { cookie: "bad=%E0%A4%A; adaptiva_sess=sid1" },
+    });
+    await expect(getSession(request, mockEnv)).resolves.toEqual(stored);
   });
 });
 
@@ -446,98 +467,3 @@ describe("refundUserPoints", () => {
   });
 });
 
-describe("consumeState", () => {
-  it("returns true for a valid, recent state", async () => {
-    const mockEnv = {
-      SESSIONS: {
-        get: vi.fn(async (key: string) => {
-          if (key === "oauth_state:valid_state") {
-            return JSON.stringify({ createdAt: Date.now() });
-          }
-          return null;
-        }),
-        delete: vi.fn(async () => {}),
-        put: vi.fn(async () => {}),
-      },
-    } as unknown as Env;
-
-    const result = await consumeState(mockEnv, "valid_state");
-    expect(result).toBe(true);
-    expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("oauth_state:valid_state");
-    expect(mockEnv.SESSIONS.delete).toHaveBeenCalledWith("oauth_state:valid_state");
-  });
-
-  it("returns false when state is not found", async () => {
-    const mockEnv = {
-      SESSIONS: {
-        get: vi.fn(async () => null),
-        delete: vi.fn(async () => {}),
-        put: vi.fn(async () => {}),
-      },
-    } as unknown as Env;
-
-    const result = await consumeState(mockEnv, "missing_state");
-    expect(result).toBe(false);
-    expect(mockEnv.SESSIONS.delete).not.toHaveBeenCalled();
-  });
-
-  it("returns false for invalid JSON in KV store", async () => {
-    const mockEnv = {
-      SESSIONS: {
-        get: vi.fn(async (key: string) => {
-          if (key === "oauth_state:invalid_json_state") {
-            return "{ invalid_json: true ";
-          }
-          return null;
-        }),
-        delete: vi.fn(async () => {}),
-        put: vi.fn(async () => {}),
-      },
-    } as unknown as Env;
-
-    const result = await consumeState(mockEnv, "invalid_json_state");
-    expect(result).toBe(false);
-    expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("oauth_state:invalid_json_state");
-    expect(mockEnv.SESSIONS.delete).toHaveBeenCalledWith("oauth_state:invalid_json_state");
-  });
-
-  it("returns false when createdAt is not a number", async () => {
-    const mockEnv = {
-      SESSIONS: {
-        get: vi.fn(async (key: string) => {
-          if (key === "oauth_state:bad_created_at") {
-            return JSON.stringify({ createdAt: "not_a_number" });
-          }
-          return null;
-        }),
-        delete: vi.fn(async () => {}),
-        put: vi.fn(async () => {}),
-      },
-    } as unknown as Env;
-
-    const result = await consumeState(mockEnv, "bad_created_at");
-    expect(result).toBe(false);
-    expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("oauth_state:bad_created_at");
-    expect(mockEnv.SESSIONS.delete).toHaveBeenCalledWith("oauth_state:bad_created_at");
-  });
-
-  it("returns false for an expired state", async () => {
-    const mockEnv = {
-      SESSIONS: {
-        get: vi.fn(async (key: string) => {
-          if (key === "oauth_state:expired_state") {
-            return JSON.stringify({ createdAt: Date.now() - 1200 * 1000 });
-          }
-          return null;
-        }),
-        delete: vi.fn(async () => {}),
-        put: vi.fn(async () => {}),
-      },
-    } as unknown as Env;
-
-    const result = await consumeState(mockEnv, "expired_state");
-    expect(result).toBe(false);
-    expect(mockEnv.SESSIONS.get).toHaveBeenCalledWith("oauth_state:expired_state");
-    expect(mockEnv.SESSIONS.delete).toHaveBeenCalledWith("oauth_state:expired_state");
-  });
-});
