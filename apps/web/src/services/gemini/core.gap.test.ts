@@ -228,7 +228,7 @@ describe("callWithRetries", () => {
     [
       "ai_generation_failed",
       new Error("ai_generation_failed"),
-      "ai_generation_failed: Layanan AI mengalami kendala. Poin Anda telah dikembalikan.",
+      "ai_generation_failed: Layanan AI mengalami kendala.",
     ],
     [
       "ai_generation_blocked",
@@ -238,14 +238,19 @@ describe("callWithRetries", () => {
     [
       "ai_generation_blocked",
       new Error("ai_generation_blocked"),
-      "ai_generation_blocked: Konten tidak dapat dibuat oleh AI. Poin Anda telah dikembalikan.",
+      "ai_generation_blocked: Konten tidak dapat dibuat oleh AI.",
     ],
     [
       "ai_upstream_network_error",
       new Error("ai_upstream_network_error"),
-      "ai_upstream_network_error: Gagal terhubung ke layanan AI. Poin Anda telah dikembalikan.",
+      "ai_upstream_network_error: Gagal terhubung ke layanan AI.",
     ],
-  ])("passes through a refunded %s error without retrying (%#)", async (_code, error, expected) => {
+    [
+      "ai_upstream_network_error",
+      new Error("ai_upstream_network_error: Gagal terhubung ke layanan AI. Poin Anda gagal dikembalikan, silakan hubungi admin."),
+      "ai_upstream_network_error: Gagal terhubung ke layanan AI. Poin Anda gagal dikembalikan, silakan hubungi admin.",
+    ],
+  ])("passes through a %s error without retrying (%#)", async (_code, error, expected) => {
     const fn = vi.fn().mockRejectedValue(error);
     await expect(callWithRetries(fn, "t")).rejects.toMatchObject({ message: expected });
     expect(fn).toHaveBeenCalledTimes(1);

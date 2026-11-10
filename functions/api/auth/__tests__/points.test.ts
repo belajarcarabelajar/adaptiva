@@ -136,6 +136,26 @@ describe("refundPoints", () => {
     }
     expect(kv.puts).toHaveLength(0);
   });
+
+  it("reports and logs a refund whose KV write is rejected", async () => {
+    const kv = fakeKV({ "points:u1": "40" });
+    kv.put = async () => {
+      throw new Error("KV PUT failed: 429 Too Many Requests");
+    };
+    const originalConsoleError = console.error;
+    const logged: unknown[][] = [];
+    console.error = (...args: unknown[]) => {
+      logged.push(args);
+    };
+    try {
+      expect(await refundPoints(envWith(kv), "u1", 10)).toEqual({ success: false, remainingPoints: 40 });
+    } finally {
+      console.error = originalConsoleError;
+    }
+    expect(kv.store.get("points:u1")).toBe("40");
+    expect(logged[0]?.[0]).toBe("Points refund write failed");
+    expect(logged[0]?.[1]).toMatchObject({ userId: "u1", amount: 10, balance: 40 });
+  });
 });
 
 describe("deductUserPoints and refundUserPoints share one balance per account", () => {

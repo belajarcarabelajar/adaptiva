@@ -37,21 +37,22 @@ export const callWithRetries = async <T,>(apiCallFn: () => Promise<T>, callName:
         throw new Error("insufficient_points: Poin Anda tidak cukup untuk melakukan aksi ini.");
       }
 
-      // AI generation failed (HTTP 4xx/5xx from upstream) — proxy already refunded points
+      // AI generation failed (HTTP 4xx/5xx from upstream). The proxy message says whether points came back.
       if (errStr.includes("ai_generation_failed")) {
         const msgMatch = errStr.match(/ai_generation_failed[:\s]+(.+)/i);
-        throw new Error(`ai_generation_failed: ${msgMatch?.[1] ?? "Layanan AI mengalami kendala. Poin Anda telah dikembalikan."}`);
+        throw new Error(`ai_generation_failed: ${msgMatch?.[1] ?? "Layanan AI mengalami kendala."}`);
       }
 
-      // AI content blocked by safety filter — proxy already refunded points
+      // AI content blocked. Google still bills a blocked prompt, so points may not come back; the proxy message says which.
       if (errStr.includes("ai_generation_blocked")) {
         const msgMatch = errStr.match(/ai_generation_blocked[:\s]+(.+)/i);
-        throw new Error(`ai_generation_blocked: ${msgMatch?.[1] ?? "Konten tidak dapat dibuat oleh AI. Poin Anda telah dikembalikan."}`);
+        throw new Error(`ai_generation_blocked: ${msgMatch?.[1] ?? "Konten tidak dapat dibuat oleh AI."}`);
       }
 
-      // Network error reaching AI upstream — proxy already refunded points
+      // Network error reaching AI upstream. The proxy message says whether the refund went through.
       if (errStr.includes("ai_upstream_network_error")) {
-        throw new Error("ai_upstream_network_error: Gagal terhubung ke layanan AI. Poin Anda telah dikembalikan.");
+        const msgMatch = errStr.match(/ai_upstream_network_error[:\s]+(.+)/i);
+        throw new Error(`ai_upstream_network_error: ${msgMatch?.[1] ?? "Gagal terhubung ke layanan AI."}`);
       }
 
       attempts++;
