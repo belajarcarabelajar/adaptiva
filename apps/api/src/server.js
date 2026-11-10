@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { resolveListenHost } from './listen-host.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,6 +70,8 @@ app.get(/(.*)/, (req, res) => {
   res.sendFile(path.join(WEB_DIST, 'index.html'));
 });
 
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+const host = resolveListenHost(process.env);
+
+app.listen(port, host, () => {
+  console.log(`Server is running on http://${host}:${port}`);
 });

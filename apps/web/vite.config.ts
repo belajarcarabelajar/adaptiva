@@ -6,10 +6,10 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   server: {
     port: 3000,
-    host: '0.0.0.0',
     proxy: {
       '/api/gemini': {
-        target: 'http://localhost:3001',
+        // The API binds 127.0.0.1 only; "localhost" may resolve to ::1 first.
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true,
       }
     }
