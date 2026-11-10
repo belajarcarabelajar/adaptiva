@@ -520,6 +520,75 @@ describe("useFlashcards handleGenerateFlashcards", () => {
     expect(ctx.refresh).toHaveBeenCalledTimes(1);
   });
 
+  it("writes a generation that finishes after a session switch to the original session only", async () => {
+    let resolveGeneration: (value: GenResult) => void = () => {};
+    mockGenerate.mockReturnValueOnce(
+      new Promise<GenResult>((resolve) => {
+        resolveGeneration = resolve;
+      }),
+    );
+    mockAuth(makeUser(20), "authenticated");
+    const setError = vi.fn<ErrorDispatch>();
+    const setHistoryItems = vi.fn<HistoryDispatch>();
+    const { result, rerender } = renderHook(
+      ({ historyId }: { historyId: string | null }) => useFlashcards(historyId, setHistoryItems, setError),
+      { initialProps: { historyId: "hA" as string | null } },
+    );
+
+    const existingA = { ...makeCard("a-1", "Suku", "Bagian dari bentuk aljabar"), moduleId: MODULE_TITLE };
+    const decksA: Record<string, FlashcardDeck> = {
+      [MODULE_TITLE]: { moduleId: MODULE_TITLE, moduleTitle: MODULE_TITLE, cards: [existingA] },
+      Geometri: { moduleId: "Geometri", moduleTitle: "Geometri", cards: [makeCard("a-2", "Sudut", "Pertemuan dua garis")] },
+    };
+    const deckB: FlashcardDeck = { moduleId: "Biologi", moduleTitle: "Biologi", cards: [makeCard("b-1", "Sel", "Unit kehidupan")] };
+    const decksB: Record<string, FlashcardDeck> = { Biologi: deckB };
+
+    act(() => {
+      result.current.setFlashcardDecks(decksA);
+      result.current.setActiveFlashcardModuleInfo(MODULE_INFO);
+    });
+
+    let pending: Promise<void> = Promise.resolve();
+    act(() => {
+      pending = result.current.handleGenerateFlashcards("Bahasa Indonesia", vi.fn(), vi.fn(), vi.fn());
+    });
+
+    // The user opens session B while the AI request is still running (what App.tsx does on select).
+    rerender({ historyId: "hB" });
+    act(() => {
+      result.current.setFlashcardDecks(decksB);
+      result.current.setCurrentFlashcardDeck(deckB);
+    });
+
+    await act(async () => {
+      resolveGeneration([{ term: "Koefisien", definition: "Angka pengali variabel" }] as GenResult);
+      await pending;
+    });
+
+    // Session B's view is left alone.
+    expect(result.current.flashcardDecks).toEqual(decksB);
+    expect(result.current.currentFlashcardDeck).toEqual(deckB);
+
+    // Session A gets the new cards on top of its own decks; session B's history is untouched.
+    const histA = { ...makeHistoryItem("hA"), flashcardDecks: decksA };
+    const histB = { ...makeHistoryItem("hB"), flashcardDecks: decksB };
+    const prev = [histA, histB];
+    const next = setHistoryItems.mock.calls.reduce<HistoryItem[]>((items, [action]) => {
+      if (typeof action !== "function") throw new Error("expected a functional setHistoryItems update");
+      return action(items);
+    }, prev);
+    expect(next[1]).toBe(histB);
+    expect(next[0].flashcardDecks).toEqual({
+      [MODULE_TITLE]: {
+        moduleId: MODULE_TITLE,
+        moduleTitle: MODULE_TITLE,
+        cards: [existingA, generatedCard(0, "Koefisien", "Angka pengali variabel")],
+      },
+      Geometri: decksA.Geometri,
+    });
+    expect(result.current.isGeneratingFlashcards).toBe(false);
+  });
+
   it("reports an empty AI result without touching decks", async () => {
     mockGenerate.mockResolvedValueOnce([] as GenResult);
     const ctx = setupGenerate(makeUser(20));
