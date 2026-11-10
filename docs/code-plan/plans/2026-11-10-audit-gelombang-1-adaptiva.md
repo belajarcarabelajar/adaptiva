@@ -121,13 +121,13 @@ tasks:
 - [x] Grounding: findings re-verified in code, owner decisions recorded (evidence: research report plus parent re-read of `_shared.ts:250-290` and `[[path]].ts:45-53,356-362`; baseline `colab-test -- bun test functions` exit 0, 90 pass; `git diff 78b250c origin/main -- functions apps/api apps/web/vite.config.ts` empty)
 - [x] Plan validated: `bun scripts/ultra-plan-runner.mjs <plan>` exit 0, `Validation: OK` (one size WARN on generated `bun.lock`, see §3)
 - [x] Plan published at Draft (`plan-sync.mjs`: publish exit 0, issue-sync exit 0, adaptiva#64), then approved (`Plan` gate, 2026-11-10)
-- [ ] T1 green: `bun run test:functions` exit 0
-- [ ] T2 green: `bun test functions/api/gemini` exit 0
-- [ ] T3 green: `bun test functions/api/auth` exit 0
-- [ ] T4 green: listen-host and devServer tests exit 0
-- [ ] T5 green: lockfile holds vite >= 6.4.6
-- [ ] T6 green: functions, web tests, typecheck, build exit 0
-- [ ] Review: parent diff audit plus independent reviewer, findings resolved
+- [x] T1 green: `bun run test:functions` exit 0 (RED exit 1 `Script not found`; GREEN exit 0, 90 pass, 0 fail; commit `623d771`)
+- [x] T2 green: `bun test functions/api/gemini` exit 0 (RED exit 1, 15 of 18 fail; GREEN parent re-run exit 0, 30 pass incl. listen-host; commits `196724c`, `0cee873` mock isolation)
+- [x] T3 green: `bun test functions/api/auth` exit 0 (RED exit 1, 10 behaviour cases fail against the old helpers; GREEN `bun run test:functions` exit 0, 127 pass, 0 fail; commit `fc2ffdb`)
+- [x] T4 green: listen-host and devServer tests exit 0 (RED exit 1 each; GREEN exit 0, 3 pass and 1 pass; commit `847e855`)
+- [x] T5 green: lockfile holds vite >= 6.4.6 (check exit 1 then 0 after `bun install --lockfile-only`; `bun run build` exit 0 printed vite v6.4.6; commit `3384994`)
+- [ ] T6 green: functions, web tests, typecheck, build exit 0 (functions exit 0, 127 pass; web `bun run test` exit 0, 27 files; build exit 0; typecheck exit 1 with 196 errors identical to base `7699aa7` (diff of error lists empty), all in pre-existing test files: not met, see §6 and F5)
+- [x] Review: parent diff audit plus documented self-review (no independent reviewer: subagent API limit, AGENTS.md A16); added evidence: fresh colab runs, base comparison of typecheck errors; findings resolved or in §8 (F4)
 - [ ] Deliver: commits on the session branch, PR opened with `Refs #<issue>`, no merge, no deploy
 - [ ] Sweep: session-close debt sweep and plan closeout
 
@@ -294,6 +294,8 @@ sequenceDiagram
 
 | Task | Step | Classification | Exit | Expected | Transient | Root cause | Evidence (log tail) | Retry used | Status |
 |---|---|---|---|---|---|---|---|---|---|
+| T6 | 3 | environment | 1 | 0 | false | pre-existing: 196 TS errors in existing test files (`toBeInTheDocument` and similar jest-dom matchers untyped); identical list on base `7699aa7` | `apps/web/src/components/TopicInputForm.test.tsx(82,47): error TS2339` | 0/1 | `DEFERRED` |
+| T2 | review | code | n/a | n/a | false | `request-guard.test.ts` lacked `mock.restore()`, so the mocked auth module leaked into later auth test files (11 failures in the full run) | `deductUserPoints > should return failure if sid cookie is missing` received success true, 95 | 0/0 | `RESOLVED` |
 
 ## 7. Human Approval Gate
 
@@ -315,6 +317,9 @@ Assumptions recorded: quota key = Google `sub` with the existing email fallback;
 | F1 | Charge by `usageMetadata` so a client cannot claim the cheaper `tutor` price | `LATER` | `defer: owner decision on billing model, next abuse signal in Gemini usage` | `OPEN` |
 | F2 | Medium and low findings of the 2026-11-09 audit (`temuan-adaptiva.json`, `l2-adaptiva.json`) | `LATER` | `defer: wave 3 sweep, owner schedules it` | `OPEN` |
 | F3 | Run `test:functions` inside `scripts/deploy-website.sh` before deploy | `LATER` | `defer: next deploy-script change, or first function regression` | `OPEN` |
+| F4 | `onRequest` catch block refunds even when no deduction happened (for example a KV error inside `deductUserPoints`); record whether the deduction ran | `NOW` | | `OPEN` |
+| F5 | Web typecheck red on `main` (196 errors, untyped jest-dom matchers in existing tests); fix the test typing in its own PR so T6 can pass | `NOW` | | `OPEN` |
+| F6 | Express dev proxy (`apps/api`) still injects the key without auth when someone sets `HOST=0.0.0.0` | `LATER` | `defer: apps/api is dev-only, next dev-tooling change` | `OPEN` |
 
 - [ ] 3-5 ranked follow-ups injected as one question-tool call of multi-select checkboxes after the final recap.
 - [ ] Every selected follow-up executed through the full pipeline with fresh evidence.
