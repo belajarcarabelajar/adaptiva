@@ -6,9 +6,11 @@
 #   bash scripts/deploy-website.sh
 #   bash scripts/deploy-website.sh --skip-build      # redeploy existing dist/
 #   bash scripts/deploy-website.sh --skip-push        # deploy only, no git push
+#   bash scripts/deploy-website.sh --allow-dirty      # deploy with uncommitted changes
 #
 # Requires:
-#   - .env or /root/.env with CLOUDFLARE_API_TOKEN / CF_API_TOKEN & CLOUDFLARE_ACCOUNT_ID / CF_ACCOUNT_ID
+#   - CLOUDFLARE_API_TOKEN / CF_API_TOKEN & CLOUDFLARE_ACCOUNT_ID / CF_ACCOUNT_ID exported,
+#     or set in .env (or /root/.env) for whichever is missing
 #   - bun installed globally
 # =============================================================================
 
@@ -27,11 +29,13 @@ die()   { echo -e "${RED}✖ $*${RESET}" >&2; exit 1; }
 SKIP_BUILD=false
 SKIP_PUSH=false
 SKIP_TEST=false
+ALLOW_DIRTY=false
 for arg in "$@"; do
   case $arg in
     --skip-build) SKIP_BUILD=true ;;
     --skip-push)  SKIP_PUSH=true  ;;
     --skip-test)  SKIP_TEST=true  ;;
+    --allow-dirty) ALLOW_DIRTY=true ;;
     *) die "Unknown argument: $arg" ;;
   esac
 done
@@ -41,32 +45,41 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="$ROOT_DIR/.env"
 
-if [[ ! -f "$ENV_FILE" ]]; then
-  if [[ -f "/root/.env" ]]; then
-    warn "Local .env not found. Falling back to /root/.env"
-    ENV_FILE="/root/.env"
-  else
-    die ".env not found at $ENV_FILE or /root/.env"
-  fi
-fi
+CF_API_TOKEN="${CLOUDFLARE_API_TOKEN:-${CF_API_TOKEN:-}}"
+CF_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-${CF_ACCOUNT_ID:-}}"
 
-# Export CF credentials (support both CLOUDFLARE_* and CF_* naming)
-if [[ -f "$ENV_FILE" ]]; then
+# Credentials already exported win; a .env file is only needed for what is missing.
+if [[ -z "$CF_API_TOKEN" || -z "$CF_ACCOUNT_ID" ]]; then
+  if [[ ! -f "$ENV_FILE" ]]; then
+    if [[ -f "/root/.env" ]]; then
+      warn "Local .env not found. Falling back to /root/.env"
+      ENV_FILE="/root/.env"
+    else
+      die "Cloudflare credentials are not exported and no .env was found at $ENV_FILE or /root/.env"
+    fi
+  fi
+
+  # Read CF credentials (support both CLOUDFLARE_* and CF_* naming)
+  FILE_TOKEN=""
+  FILE_ACCOUNT=""
   while IFS='=' read -r key val || [[ -n "$key" ]]; do
     # Remove leading/trailing spaces and quotes
     key=$(echo "$key" | xargs 2>/dev/null || true)
     val=$(echo "$val" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//" 2>/dev/null || true)
-    if [[ "$key" =~ ^(CLOUDFLARE_API_TOKEN|CF_API_TOKEN|CLOUDFLARE_ACCOUNT_ID|CF_ACCOUNT_ID)$ ]]; then
-      export "$key"="$val"
-    fi
+    case "$key" in
+      CLOUDFLARE_API_TOKEN) FILE_TOKEN="$val" ;;
+      CF_API_TOKEN) FILE_TOKEN="${FILE_TOKEN:-$val}" ;;
+      CLOUDFLARE_ACCOUNT_ID) FILE_ACCOUNT="$val" ;;
+      CF_ACCOUNT_ID) FILE_ACCOUNT="${FILE_ACCOUNT:-$val}" ;;
+    esac
   done < "$ENV_FILE"
+
+  if [[ -z "$CF_API_TOKEN" ]]; then CF_API_TOKEN="$FILE_TOKEN"; fi
+  if [[ -z "$CF_ACCOUNT_ID" ]]; then CF_ACCOUNT_ID="$FILE_ACCOUNT"; fi
 fi
 
-CF_API_TOKEN="${CLOUDFLARE_API_TOKEN:-${CF_API_TOKEN:-}}"
-CF_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-${CF_ACCOUNT_ID:-}}"
-
-[[ -z "$CF_API_TOKEN" ]] && die "CLOUDFLARE_API_TOKEN or CF_API_TOKEN is not set in $ENV_FILE"
-[[ -z "$CF_ACCOUNT_ID" ]] && die "CLOUDFLARE_ACCOUNT_ID or CF_ACCOUNT_ID is not set in $ENV_FILE"
+[[ -z "$CF_API_TOKEN" ]] && die "CLOUDFLARE_API_TOKEN or CF_API_TOKEN is not set in the environment or $ENV_FILE"
+[[ -z "$CF_ACCOUNT_ID" ]] && die "CLOUDFLARE_ACCOUNT_ID or CF_ACCOUNT_ID is not set in the environment or $ENV_FILE"
 
 CF_PROJECT_NAME="adaptiva"
 CF_BRANCH="main"
@@ -93,6 +106,11 @@ else
     die "Unit tests failed — fix failing tests before deploying."
   fi
   ok "Unit tests passed"
+
+  if ! bun run test:functions 2>&1; then
+    die "Functions tests failed: fix failing tests before deploying."
+  fi
+  ok "Functions tests passed"
 fi
 
 # ── Step 2: Build ─────────────────────────────────────────────────────────────
@@ -123,6 +141,7 @@ fi
 # ── Step 3: Git status check ─────────────────────────────────────────────────
 step "3/5  Git status check"
 GIT_STATUS=$(git status --porcelain 2>/dev/null || true)
+COMMIT_DIRTY_FLAG=()
 
 if [[ -n "$GIT_STATUS" ]]; then
   warn "Uncommitted changes detected in working tree"
@@ -130,6 +149,10 @@ if [[ -n "$GIT_STATUS" ]]; then
   if [[ $(echo "$GIT_STATUS" | wc -l) -gt 10 ]]; then
     echo "    ... (and more)"
   fi
+  if [[ "$ALLOW_DIRTY" != "true" ]]; then
+    die "Refusing to deploy uncommitted changes to production. Commit them, or pass --allow-dirty."
+  fi
+  COMMIT_DIRTY_FLAG=(--commit-dirty=true)
 else
   ok "Working tree clean"
 fi
@@ -138,17 +161,18 @@ fi
 step "4/5  Deploy to Cloudflare Pages"
 DEPLOY_START=$(date +%s)
 
+# A plain VAR=$(cmd) trips set -e and exits before the output below is shown.
+DEPLOY_EXIT=0
 DEPLOY_OUTPUT=$(
   CLOUDFLARE_API_TOKEN="$CF_API_TOKEN" \
   CLOUDFLARE_ACCOUNT_ID="$CF_ACCOUNT_ID" \
   bun x wrangler pages deploy apps/web/dist \
     --project-name "$CF_PROJECT_NAME" \
     --branch "$CF_BRANCH" \
-    --commit-dirty=true \
+    ${COMMIT_DIRTY_FLAG[@]+"${COMMIT_DIRTY_FLAG[@]}"} \
     2>&1
-)
+) || DEPLOY_EXIT=$?
 
-DEPLOY_EXIT=$?
 DEPLOY_END=$(date +%s)
 DEPLOY_SECS=$((DEPLOY_END - DEPLOY_START))
 
