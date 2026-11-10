@@ -75,6 +75,9 @@ describe("Gemini proxy request guard", () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
+    // Without this the mocked auth module leaks into the auth test files that
+    // run later in the same `bun test` process.
+    mock.restore();
   });
 
   describe("resolveCost", () => {
