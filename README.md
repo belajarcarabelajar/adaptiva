@@ -118,7 +118,8 @@ graph TD
 | :--- | :--- | :--- | :---: |
 | `GEMINI_API_KEY` | Monorepo / Cloudflare Pages | API Key for Google Gemini services | Yes |
 | `PORT` | `apps/api` | Port for the Express backend proxy (Default: `3001`) | No |
-| `ALLOWED_ORIGINS` | `apps/api` | Comma-separated CORS origins (Default: `localhost:3000` and `127.0.0.1:3000`) | No |
+| `ALLOWED_ORIGINS` | `apps/api` | Comma-separated CORS origins (Default: `localhost` and `127.0.0.1` on port `3000` and on `PORT`) | No |
+| `HOST` | `apps/api` | Bind address (Default: `127.0.0.1`). A non-loopback value is refused unless `ALLOW_PUBLIC_HOST=1`, because the Gemini proxy has no auth | No |
 | `GOOGLE_CLIENT_ID` | Cloudflare Pages | Google OAuth client ID for sign-in | For Sign-in |
 | `GOOGLE_CLIENT_SECRET` | Cloudflare Pages | Google OAuth client secret for sign-in | For Sign-in |
 | `AUTH_BASE_URL` | Cloudflare Pages | Overrides the OAuth redirect origin, for example in local dev | No |
@@ -140,7 +141,7 @@ All commands can be executed from the monorepo root using `bun`:
 | `bun run build` | Builds static assets for production into `apps/web/dist` |
 | `bun run start` | Serves production web build via API proxy |
 | `bun run test` | Runs frontend Vitest unit test suite |
-| `bun run deploy` | Deploys web app and edge functions to Cloudflare Pages |
+| `bun run deploy` | Typechecks, runs web and Functions tests, builds, then deploys to Cloudflare Pages (refuses a dirty tree unless `--allow-dirty`) |
 | `bun run check:cf` | Verifies Cloudflare deployment status and API health |
 | `bun run setup:kv` | Initializes Cloudflare KV namespaces for sessions |
 
@@ -161,7 +162,7 @@ Adaptiva is optimized for deployment on **Cloudflare Pages**.
    ```bash
    bun run deploy
    ```
-   Or perform a dry-run test build:
+   Or check that it would build, without deploying (typecheck + build only):
    ```bash
    bun run deploy:dry
    ```
