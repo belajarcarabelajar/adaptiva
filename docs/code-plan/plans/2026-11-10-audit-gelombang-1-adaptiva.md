@@ -1,7 +1,7 @@
 ---
 schema: ultra-plan/v1
 plan_id: 2026-11-10-audit-gelombang-1-adaptiva
-status: Approved
+status: InProgress
 version: 1
 runner_contract: true
 defaults:
@@ -128,7 +128,7 @@ tasks:
 - [x] T5 green: lockfile holds vite >= 6.4.6 (check exit 1 then 0 after `bun install --lockfile-only`; `bun run build` exit 0 printed vite v6.4.6; commit `3384994`)
 - [ ] T6 green: functions, web tests, typecheck, build exit 0 (functions exit 0, 127 pass; web `bun run test` exit 0, 27 files; build exit 0; typecheck exit 1 with 196 errors identical to base `7699aa7` (diff of error lists empty), all in pre-existing test files: not met, see §6 and F5)
 - [x] Review: parent diff audit plus documented self-review (no independent reviewer: subagent API limit, AGENTS.md A16); added evidence: fresh colab runs, base comparison of typecheck errors; findings resolved or in §8 (F4)
-- [ ] Deliver: commits on the session branch, PR opened with `Refs #<issue>`, no merge, no deploy
+- [x] Deliver: commits on the session branch, PR #65 opened with `Refs #64` (`pr-registry open` exit 0), no merge, no deploy
 - [ ] Sweep: session-close debt sweep and plan closeout
 
 ## 1. Intent & Scope
