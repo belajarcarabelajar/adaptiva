@@ -1,5 +1,5 @@
 // Pages Function: return the current user (or 401).
-// 200: { user: { id, email, name, picture } }
+// 200: { user: { id, email, name, picture, points } } (points from the account ledger)
 // 401: { error: "not_authenticated" }
 // Never returns tokens.
 
@@ -10,6 +10,7 @@ import {
   type Env,
   type PagesFunction,
 } from "./_shared";
+import { getBalance } from "./points";
 
 export const onRequestOptions: PagesFunction<Env> = async (context) => {
   const origin = getAllowedOrigin(context.request, context.env);
@@ -36,7 +37,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       email: session.email,
       name: session.name,
       picture: session.picture,
-      points: session.points ?? 100,
+      points: await getBalance(env, session.userId),
     },
   }, 200, {}, env);
 };
