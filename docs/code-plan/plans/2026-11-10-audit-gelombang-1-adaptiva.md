@@ -129,7 +129,7 @@ tasks:
 - [ ] T6 green: functions, web tests, typecheck, build exit 0 (functions exit 0, 127 pass; web `bun run test` exit 0, 27 files; build exit 0; typecheck exit 1 with 196 errors identical to base `7699aa7` (diff of error lists empty), all in pre-existing test files: not met, see §6 and F5)
 - [x] Review: parent diff audit plus documented self-review (no independent reviewer: subagent API limit, AGENTS.md A16); added evidence: fresh colab runs, base comparison of typecheck errors; findings resolved or in §8 (F4)
 - [x] Deliver: commits on the session branch, PR #65 opened with `Refs #64` (`pr-registry open` exit 0), no merge, no deploy
-- [ ] Sweep: session-close debt sweep and plan closeout
+- [x] Sweep: session-close debt sweep and plan closeout (4/4 follow-ups done: F4 `da83402`, F5 PR #66, setform F3, TLI F5 PR #5; `Close plan` = Keep it open; graph registered, `graphify-sync --check` exit 0)
 
 ## 1. Intent & Scope
 
@@ -320,6 +320,7 @@ Assumptions recorded: quota key = Google `sub` with the existing email fallback;
 | F4 | `onRequest` catch block refunds even when no deduction happened (for example a KV error inside `deductUserPoints`); record whether the deduction ran | `NOW` | | `DONE` (commit `da83402`: RED exit 1, `bun run test:functions` exit 0, 129 pass) |
 | F5 | Web typecheck red on `main` (196 errors, untyped jest-dom matchers in existing tests); fix the test typing in its own PR so T6 can pass | `NOW` | | `DONE` in PR #66 (`66e3c2a`: tsc exit 0, 0 errors; `bun run test` exit 0, 26 files); T6 turns green once #66 is merged into this branch |
 | F6 | Express dev proxy (`apps/api`) still injects the key without auth when someone sets `HOST=0.0.0.0` | `LATER` | `defer: apps/api is dev-only, next dev-tooling change` | `OPEN` |
+| F8 | Session plan, spec and ledger reach the graph only after merge: run `graphify update .` then `bun ~/vivera/scripts/graphify-sync.mjs --root "$(pwd)"` in the main checkout | `LATER` | `defer: PR merge, the graph lives in the main checkout` | `OPEN` |
 
 - [x] 3-5 ranked follow-ups injected as one question-tool call of multi-select checkboxes after the final recap (4 offered, 4 selected, 2026-11-10).
 - [ ] Every selected follow-up executed through the full pipeline with fresh evidence.
