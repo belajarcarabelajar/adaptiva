@@ -244,8 +244,8 @@ tasks:
 - [x] Research R1 (call sites and schemas), R2 (proxy contract), R3 (SDK shapes) gathered. The spec cites them.
 - [x] Plan validated: `bun ~/vivera/scripts/ultra-plan-runner.mjs <plan>` exit 0, `Validation: OK`. Published: `plan-sync` publish exit 0, issue-sync exit 0 -> #72. `Plan` gate approved by the owner 2026-11-12.
 - [x] Session claimed. `pr-registry claim --session migrasi-claude-adaptiva --repo <adaptiva> --worktree` reports claimed, with worktree `/mnt/belajarcarabelajar/adaptiva-wt/migrasi-claude-adaptiva` on branch `2026-11-12-migrasi-claude/migrasi-claude-adaptiva` from `origin/main` 1015764. The first claim omitted `--repo` and landed in vivera: its clean worktree and branch were removed, and its slot was set to `closed`.
-- [ ] T1-T10 done with evidence, per the tasks below.
-- [ ] Fix verification fan-out: replay the original repro, regression suites, sibling-caller audit, and an 8-criteria diff review.
+- [x] T1-T10 done with evidence, per the tasks below. Evidence: `ultra-plan-runner --execute` exit 0 (T1-T9, T11, T12 SKIPPED-IDEMPOTENT, T10 PASSED), 2026-11-12.
+- [x] Fix verification fan-out: replay the original repro, regression suites, sibling-caller audit, and an 8-criteria diff review. Evidence: T10 suites exit 0 (functions 215 pass, web 365, api 22, both typechecks, build, wrangler functions build); independent review round 2 verdict correct after two fixes (5019104, 62e57f6); sibling callers checked by the reviewer.
 - [ ] Deliver: commit on the session branch, PR with `Refs #<n>`, plan and issue re-synced.
 - [ ] Debt sweep, learning ledger, `graphify update` and `graphify:sync`.
 
@@ -286,13 +286,13 @@ flowchart TD
 - Test-first: each task opens with a RED run.
 
 **Acceptance Criteria:**
-- [ ] AC-1: `curriculum.sevenDayPlan` goes to `claude-sonnet-5-5`, effort `medium`, with a JSON schema whose required properties are `day1`..`day7`.
-- [ ] AC-2: every JSON task sends the registry's model, effort, `max_tokens` and schema, and nothing from the client overrides them.
-- [ ] AC-3: the points and error contract: deduct before the call, one refund on API or network error, `x-adaptiva-points`, and the five error strings.
-- [ ] AC-4: the tutor streams SSE from `claude-haiku-5-5` with the client-supplied history.
-- [ ] AC-5: resources use `web_search_20250305` on Sonnet 5.5 and return `{text, sources}`.
-- [ ] AC-6: the exported web service names and parameters are unchanged; callers behave the same.
-- [ ] AC-7: Gemini is gone, and the suites, typecheck and build exit 0.
+- [x] AC-1: `curriculum.sevenDayPlan` goes to `claude-sonnet-5-5`, effort `medium`, with a JSON schema whose required properties are `day1`..`day7`. Evidence: `_tasks.ts:76-86`, `tasks.test.ts`.
+- [x] AC-2: every JSON task sends the registry's model, effort, `max_tokens` and schema, and nothing from the client overrides them. Evidence: `tasks.test.ts`, `core.test.ts`.
+- [x] AC-3: the points and error contract: deduct before the call, one refund on API or network error, `x-adaptiva-points`, and the five error strings. Evidence: `core.test.ts`, `core-followups.test.ts`, `index.test.ts`.
+- [x] AC-4: the tutor streams SSE from `claude-haiku-5-5` with the client-supplied history. Evidence: `tutor.test.ts`, `core-routes.test.ts`, `chat.test.ts`.
+- [x] AC-5: resources use `web_search_20250305` on Sonnet 5.5 and return `{text, sources}`. Evidence: `_search.ts:58`, `search.test.ts`, `resources.test.ts`.
+- [x] AC-6: the exported web service names and parameters are unchanged; callers behave the same. Evidence: web suite exit 0 (365 tests), web tsc exit 0.
+- [x] AC-7: Gemini is gone, and the suites, typecheck and build exit 0. Evidence: T9 probe exit 0; suites, typechecks and build exit 0.
 
 **Traceability:**
 
@@ -366,17 +366,17 @@ flowchart TD
   - Response `{text}`.
 
 **Steps:**
-- [ ] Write `tasks.test.ts`. It asserts:
+- [x] Write `tasks.test.ts`. It asserts:
   - the 7-row mapping (model, effort, `max_tokens`, action);
   - that the sevenDayPlan schema requires `day1`..`day7`;
   - that no schema uses `maxItems` or `minItems > 1`.
-- [ ] Write `claude.test.ts` with a fake `fetch` that returns an SSE message:
+- [x] Write `claude.test.ts` with a fake `fetch` that returns an SSE message:
   - the request body has `output_config.{effort, format}`;
   - Sonnet sends the `anthropic-beta: server-side-fallback-2026-07-01` header plus `fallbacks: "default"`; Haiku sends neither;
   - text is read from the `text` block after `thinking`.
-- [ ] Write `core.test.ts` with a fake gateway and fake deduct and refund, covering each row of spec 2.3.
-- [ ] Run `bun test --isolate functions/api/ai`: expect exit 1 (RED).
-- [ ] Implement, then run it again: exit 0.
+- [x] Write `core.test.ts` with a fake gateway and fake deduct and refund, covering each row of spec 2.3.
+- [x] Run `bun test --isolate functions/api/ai`: expect exit 1 (RED).
+- [x] Implement, then run it again: exit 0.
 
 **Edge cases:**
 - Unknown task.
@@ -432,9 +432,9 @@ flowchart TD
 - The request must have `task: "curriculum.sevenDayPlan"` and must not carry a model.
 
 **Steps:**
-- [ ] RED: `bun run --cwd apps/web test src/services/gemini/curriculum.test.ts`, expect exit 1.
-- [ ] Implement.
-- [ ] GREEN: `bun run --cwd apps/web test src/services`, expect exit 0.
+- [x] RED: `bun run --cwd apps/web test src/services/gemini/curriculum.test.ts`, expect exit 1.
+- [x] Implement.
+- [x] GREEN: `bun run --cwd apps/web test src/services`, expect exit 0.
 
 ### Task T5: quiz, exam and flashcard
 
@@ -503,10 +503,10 @@ flowchart TD
   - `.env.example`, `README.md` and the `wrangler.jsonc` comment.
 
 **Steps:**
-- [ ] RED: the `rg` probe for `google/genai|api/gemini` finds hits (exit 1).
-- [ ] Remove them.
-- [ ] Run the probe again: no hits (exit 0).
-- [ ] `pointCosts.test.ts`: exit 0.
+- [x] RED: the `rg` probe for `google/genai|api/gemini` finds hits (exit 1).
+- [x] Remove them.
+- [x] Run the probe again: no hits (exit 0).
+- [x] `pointCosts.test.ts`: exit 0.
 
 ### Task T10: full verification
 
@@ -522,10 +522,10 @@ Runs: `bun run test`, `bun run test:functions`, `bun test apps/api/src`, `tsc` a
   - `apps/web/src/services/geminiService.test.ts`: delete the chat and resources blocks that T6 and T7 made obsolete.
 
 **Steps:**
-- [ ] RED: `bun test --isolate functions/api/ai/__tests__/core-routes.test.ts`, expected exit 1.
-- [ ] Implement the routes.
-- [ ] GREEN: `bun test --isolate functions/api/ai`, expected exit 0.
-- [ ] GREEN: `bun run --cwd apps/web test src/services src/hooks`, expected exit 0.
+- [x] RED: `bun test --isolate functions/api/ai/__tests__/core-routes.test.ts`, expected exit 1.
+- [x] Implement the routes.
+- [x] GREEN: `bun test --isolate functions/api/ai`, expected exit 0.
+- [x] GREEN: `bun run --cwd apps/web test src/services src/hooks`, expected exit 0.
 
 ### Task T12: keep spaces between tutor deltas (found in the debt sweep)
 
@@ -538,8 +538,8 @@ Runs: `bun run test`, `bun run test:functions`, `bun test apps/api/src`, `tsc` a
 - Leave the `onChunk` contract as it is, because App.tsx appends what it receives.
 
 **Steps:**
-- [ ] RED: `chat.test.ts` sends the deltas `"Halo"`, `" dunia"` and `" **tebal**"`, and expects `"Halo dunia tebal"` (exit 1).
-- [ ] GREEN: exit 0.
+- [x] RED: `chat.test.ts` sends the deltas `"Halo"`, `" dunia"` and `" **tebal**"`, and expects `"Halo dunia tebal"` (exit 1).
+- [x] GREEN: exit 0.
 
 ## Size warnings (runner)
 
@@ -590,6 +590,7 @@ The runner warns about `bun.lock`, `App.tsx` and `geminiService.test.ts` because
 | D14 | A request without an `Origin` header to the dev server's `/api/*` returns 500 (CORS, pre-existing) | `apps/api/src/app.js` | 403 JSON or allowed | LATER (`defer: dev only, upgrade-trigger: a tool calls the dev API without Origin`) |
 | D15 | The owner's `.env.local` needs `ANTHROPIC_API_KEY` for local dev | owner's machine | Owner action; not written by the agent (credential) | OWNER |
 | D16 | The D9 usage log for `resources.search` reads only the final message's `usage`, so searches resumed after `pause_turn` are under-counted | `_search.ts` | Sum `usage` across turns, plus a test | LATER (`defer: log only, no billing effect, upgrade-trigger: usage numbers are used for pricing`) |
+| D17 | On a refunded tutor refusal, the SSE `x-adaptiva-points` header still shows the balance after the charge (headers go out before the refund); the frame states the refund only in its message | `_core.ts`, `_tutor.ts` | Add `remainingPoints` to the error frame and have `chat.ts` surface it | LATER (`defer: 2 points, the next request shows the right balance, upgrade-trigger: a user reports a wrong balance after a tutor refusal`) |
 
 ## Closeout status
 
