@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { createProxyMiddleware } from 'http-proxy-middleware';
+import { Readable } from 'stream';
 import path from 'path';
 
 // 3000 is the Vite dev server; `port` is this server, which serves the built SPA in `bun start`.
@@ -11,7 +11,34 @@ export function defaultAllowedOrigins(port) {
   ]);
 }
 
-export function createApp({ apiKey, webDist, port, allowedOrigins = defaultAllowedOrigins(port) }) {
+// Same cap as MAX_BODY_BYTES in functions/api/ai/_core.ts, which answers 413 too.
+const MAX_AI_BODY_BYTES = 1048576;
+
+async function forwardToAiHandler(req, res, aiHandler) {
+  const headers = new Headers();
+  if (req.headers['content-type']) headers.set('content-type', req.headers['content-type']);
+  const request = new Request(`http://127.0.0.1${req.originalUrl}`, {
+    method: req.method,
+    headers,
+    body: Buffer.isBuffer(req.body) && req.body.length > 0 ? req.body : undefined,
+  });
+  const response = await aiHandler(request);
+  res.status(response.status);
+  response.headers.forEach((value, key) => res.setHeader(key, value));
+  if (!response.body) {
+    res.end();
+    return;
+  }
+  res.flushHeaders();
+  const body = Readable.fromWeb(response.body);
+  req.on('close', () => body.destroy());
+  for await (const chunk of body) {
+    res.write(chunk);
+  }
+  res.end();
+}
+
+export function createApp({ aiHandler, webDist, port, allowedOrigins = defaultAllowedOrigins(port) }) {
   const app = express();
 
   const corsOptions = {
@@ -28,22 +55,23 @@ export function createApp({ apiKey, webDist, port, allowedOrigins = defaultAllow
   // which doesn't provide an Origin header.
   app.use('/api', cors(corsOptions));
 
-  app.use(
-    '/api/gemini',
-    createProxyMiddleware({
-      target: 'https://generativelanguage.googleapis.com',
-      changeOrigin: true,
-      pathRewrite: {
-        '^/api/gemini': '',
-      },
-      on: {
-        proxyReq: (proxyReq) => {
-          if (apiKey) {
-            proxyReq.setHeader('x-goog-api-key', apiKey);
-          }
-        },
-      },
-    })
+  app.post(
+    '/api/ai',
+    express.raw({ type: () => true, limit: MAX_AI_BODY_BYTES }),
+    (req, res, next) => {
+      forwardToAiHandler(req, res, aiHandler).catch(next);
+    },
+    (err, req, res, next) => {
+      if (err?.type === 'entity.too.large') {
+        res.status(413).json({ error: 'payload_too_large' });
+        return;
+      }
+      if (res.headersSent) {
+        res.destroy(err);
+        return;
+      }
+      res.status(502).json({ error: 'Proxy error' });
+    }
   );
 
   // Auth lives only in the Cloudflare Pages Functions; without this the SPA

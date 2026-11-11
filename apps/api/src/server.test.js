@@ -18,15 +18,15 @@ async function startServer(env) {
 
 describe('server.js startup', () => {
   test('exits 1 with a clear error when HOST is not loopback', async () => {
-    const { exit, stderr } = await startServer({ HOST: '0.0.0.0', GEMINI_API_KEY: 'k' });
+    const { exit, stderr } = await startServer({ HOST: '0.0.0.0', ANTHROPIC_API_KEY: 'k' });
     expect(exit).toBe(1);
     expect(stderr).toContain('ALLOW_PUBLIC_HOST');
   });
 
-  test('exits 1 with a clear error when GEMINI_API_KEY is missing', async () => {
+  test('exits 1 with a clear error when ANTHROPIC_API_KEY is missing', async () => {
     // An empty value counts as set, so dotenv will not fill it from a real .env.local.
-    const { exit, stderr } = await startServer({ GEMINI_API_KEY: '' });
+    const { exit, stderr } = await startServer({ ANTHROPIC_API_KEY: '' });
     expect(exit).toBe(1);
-    expect(stderr).toContain('GEMINI_API_KEY is not set');
+    expect(stderr).toContain('ANTHROPIC_API_KEY is not set');
   });
 });

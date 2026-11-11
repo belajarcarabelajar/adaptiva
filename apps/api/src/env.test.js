@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
-import { ENV_FILE, requireGeminiKey } from './env.js';
+import { ENV_FILE, requireAnthropicKey } from './env.js';
 
 describe('ENV_FILE', () => {
   test('points at .env.local in the monorepo root', () => {
@@ -12,13 +12,17 @@ describe('ENV_FILE', () => {
   });
 });
 
-describe('requireGeminiKey', () => {
-  test('returns the key when set', () => {
-    expect(requireGeminiKey({ GEMINI_API_KEY: 'k-123' })).toBe('k-123');
+describe('requireAnthropicKey', () => {
+  test('returns the trimmed key when set', () => {
+    expect(requireAnthropicKey({ ANTHROPIC_API_KEY: ' sk-ant-123 ' })).toBe('sk-ant-123');
   });
 
   test('throws a clear error naming the env file when the key is missing', () => {
-    expect(() => requireGeminiKey({})).toThrow(/GEMINI_API_KEY.*\.env\.local/s);
-    expect(() => requireGeminiKey({ GEMINI_API_KEY: '  ' })).toThrow(/GEMINI_API_KEY/);
+    expect(() => requireAnthropicKey({})).toThrow(/ANTHROPIC_API_KEY.*\.env\.local/s);
+    expect(() => requireAnthropicKey({ ANTHROPIC_API_KEY: '  ' })).toThrow(/ANTHROPIC_API_KEY/);
+  });
+
+  test('ignores GEMINI_API_KEY', () => {
+    expect(() => requireAnthropicKey({ GEMINI_API_KEY: 'g-1' })).toThrow(/ANTHROPIC_API_KEY/);
   });
 });
