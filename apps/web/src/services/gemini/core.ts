@@ -15,6 +15,31 @@ export const getAiClient = (actionName = 'default') => {
 
 export const ai = getAiClient('default');
 
+const aiTaskUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/ai` : 'http://localhost:3000/api/ai';
+
+// The thrown message keeps the "<status> <error>: <message>" form because callWithRetries matches on those substrings.
+export const callAiTask = async (task: string, body: { prompt: string; system?: string }): Promise<string> => {
+  const response = await fetch(aiTaskUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ task, ...body }),
+  });
+  const raw = await response.text();
+  let data: { text?: unknown; error?: unknown; message?: unknown } | null = null;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    data = null;
+  }
+  if (!response.ok) {
+    const error = typeof data?.error === 'string' ? data.error : response.statusText;
+    const message = typeof data?.message === 'string' ? data.message : '';
+    throw new Error(`${response.status} ${error}: ${message}`);
+  }
+  return typeof data?.text === 'string' ? data.text : '';
+};
+
 const MAX_RETRIES = 3;
 const INITIAL_DELAY_MS = 1000;
 

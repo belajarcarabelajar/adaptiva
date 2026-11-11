@@ -1,14 +1,15 @@
-import { GenerateContentResponse } from "@google/genai";
 import {
   Curriculum,
   CurriculumModule,
+  DailyPlan,
   GeminiCurriculumOutlineResponse,
   GeminiModuleDetailResponse,
-  GeminiSevenDayPlanResponse,
   SevenDayPlan
 } from '../../types';
-import { callWithRetries, getAiClient, parseGeminiJsonResponse, cleanModuleTitle } from './core';
-import { MODEL_CURRICULUM_OUTLINE, MODEL_MODULE_SUMMARY, MODEL_SEVEN_DAY_PLAN } from './constants';
+import { callAiTask, callWithRetries, parseGeminiJsonResponse, cleanModuleTitle } from './core';
+
+const SEVEN_DAY_KEYS = ['day1', 'day2', 'day3', 'day4', 'day5', 'day6', 'day7'] as const;
+type SevenDayPlanTaskResponse = Partial<Record<(typeof SEVEN_DAY_KEYS)[number], { task?: unknown; summaryFocus?: unknown }>>;
 
 export const generateInitialCurriculumOutline = async (
   topic: string,
@@ -93,15 +94,10 @@ export const generateInitialCurriculumOutline = async (
   `;
 
   try {
-    const response = await callWithRetries<GenerateContentResponse>(
-      () => getAiClient('curriculum').models.generateContent({
-        model: MODEL_CURRICULUM_OUTLINE,
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      }),
+    const rawResponseText = await callWithRetries(
+      () => callAiTask('curriculum.outline', { prompt }),
       "generateInitialCurriculumOutline"
     );
-    const rawResponseText = response.text;
     const parsedData = parseGeminiJsonResponse<GeminiCurriculumOutlineResponse>(rawResponseText);
 
     if (parsedData && parsedData.moduleTitles && parsedData.syllabus) {
@@ -211,15 +207,10 @@ The material should be comprehensive enough for thorough understanding of ${modu
 `;
 
   try {
-    const response = await callWithRetries<GenerateContentResponse>(
-      () => getAiClient('module').models.generateContent({
-        model: MODEL_MODULE_SUMMARY,
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      }),
+    const rawResponseText = await callWithRetries(
+      () => callAiTask('module.summary', { prompt }),
       `generateModuleLectureSummary for ${moduleTitle}`
     );
-    const rawResponseText = response.text;
     const parsedData = parseGeminiJsonResponse<GeminiModuleDetailResponse>(rawResponseText);
 
     if (parsedData && typeof parsedData.moduleMaterial === 'string') {
@@ -302,34 +293,31 @@ export const generateSevenDayPlan = async (
 
     Respond STRICTLY with a single, valid JSON object in the following format:
     {
-      "days": [
-        {
-          "day": 1,
-          "task": "- Sub-task 1 for the day...\\n- Sub-task 2...",
-          "summaryFocus": "Clean Title of Module 1"
-        }
-      ]
+      "day1": {"task": "- Sub-task 1 for the day...\\n- Sub-task 2...", "summaryFocus": "Clean Title of Module 1"},
+      "day2": {"task": "...", "summaryFocus": "..."},
+      "day3": {"task": "...", "summaryFocus": "..."},
+      "day4": {"task": "...", "summaryFocus": "..."},
+      "day5": {"task": "...", "summaryFocus": "..."},
+      "day6": {"task": "...", "summaryFocus": "..."},
+      "day7": {"task": "...", "summaryFocus": "..."}
     }
   `;
 
   try {
-    const response = await callWithRetries<GenerateContentResponse>(
-      () => getAiClient('curriculum').models.generateContent({
-        model: MODEL_SEVEN_DAY_PLAN,
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      }),
+    const rawResponseText = await callWithRetries(
+      () => callAiTask('curriculum.sevenDayPlan', { prompt }),
       "generateSevenDayPlan"
     );
-    const rawResponseText = response.text;
-    const parsedData = parseGeminiJsonResponse<GeminiSevenDayPlanResponse>(rawResponseText);
+    const parsedData = parseGeminiJsonResponse<SevenDayPlanTaskResponse>(rawResponseText);
 
-    if (parsedData && parsedData.days && parsedData.days.length === 7) {
-      const cleanedDays = parsedData.days.map(d => ({
-        ...d,
-        summaryFocus: cleanModuleTitle(d.summaryFocus)
-      }));
-      return { days: cleanedDays, topic };
+    const days: DailyPlan[] = [];
+    for (const [index, key] of SEVEN_DAY_KEYS.entries()) {
+      const entry = parsedData?.[key];
+      if (!entry || typeof entry.task !== 'string' || typeof entry.summaryFocus !== 'string') break;
+      days.push({ day: index + 1, task: entry.task, summaryFocus: cleanModuleTitle(entry.summaryFocus) });
+    }
+    if (days.length === SEVEN_DAY_KEYS.length) {
+      return { days, topic };
     }
     console.error("Failed to parse 7-day plan data from Gemini or plan is not 7 days. Full response text that failed parsing:", rawResponseText);
     return null;

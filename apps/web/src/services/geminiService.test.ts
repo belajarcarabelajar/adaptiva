@@ -18,10 +18,7 @@ vi.mock('@google/genai', () => {
 });
 
 import {
-  generateInitialCurriculumOutline,
-  generateSevenDayPlan,
   generateExamQuestions,
-  generateModuleLectureSummary,
   generateQuiz,
   generateDetailedQuizExplanation,
   generateFlashcardsFromMaterial,
@@ -57,108 +54,6 @@ describe('cleanAiOutput', () => {
   });
 });
 
-describe('generateInitialCurriculumOutline', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('should return valid curriculum on successful API response', async () => {
-    const mockResponse = {
-      text: JSON.stringify({
-        syllabus: '## My Syllabus',
-        moduleTitles: ['Module 1', 'Module 2']
-      })
-    };
-    mockGenerateContent.mockResolvedValue(mockResponse);
-
-    const result = await generateInitialCurriculumOutline('React');
-    expect(result).toEqual({
-      topic: 'React',
-      syllabus: '## My Syllabus',
-      modules: [
-        { title: 'Module 1', moduleMaterial: undefined, isLoading: false, loadingError: null },
-        { title: 'Module 2', moduleMaterial: undefined, isLoading: false, loadingError: null }
-      ]
-    });
-  });
-
-  it('should parse JSON with literal unescaped newlines in syllabus text', async () => {
-    const mockResponse = {
-      text: "{\n  \"syllabus\": \"## Title\\n- Item 1\\n- Item 2\",\n  \"moduleTitles\": [\"Modul 1\"]\n}"
-    };
-    mockGenerateContent.mockResolvedValue(mockResponse);
-
-    const result = await generateInitialCurriculumOutline('Digital Marketing');
-    expect(result).not.toBeNull();
-    expect(result?.syllabus).toContain('Item 1');
-    expect(result?.modules).toHaveLength(1);
-  });
-
-  it('should parse JSON wrapped in markdown fences with preamble text', async () => {
-    const mockResponse = {
-      text: "Here is the syllabus:\n```json\n{\n  \"syllabus\": \"## Intro\",\n  \"moduleTitles\": [\"Modul 1\", \"Modul 2\",]\n}\n```\nHope this helps!"
-    };
-    mockGenerateContent.mockResolvedValue(mockResponse);
-
-    const result = await generateInitialCurriculumOutline('Digital Marketing');
-    expect(result).not.toBeNull();
-    expect(result?.modules).toHaveLength(2);
-  });
-
-  it('should return null when parsing fails', async () => {
-    const mockResponse = {
-      text: 'not json'
-    };
-    mockGenerateContent.mockResolvedValue(mockResponse);
-
-    const result = await generateInitialCurriculumOutline('React');
-    expect(result).toBeNull();
-  });
-
-  it('should format instruction correctly when targetLanguage is provided', async () => {
-    const mockResponse = {
-      text: JSON.stringify({
-        syllabus: '## My Syllabus',
-        moduleTitles: ['Module 1']
-      })
-    };
-    mockGenerateContent.mockResolvedValue(mockResponse);
-
-    await generateInitialCurriculumOutline('React', 'Indonesian');
-    expect(mockGenerateContent).toHaveBeenCalled();
-  });
-
-  it('should throw error when API call fails', async () => {
-    mockGenerateContent.mockRejectedValue(new Error('API Error'));
-
-    await expect(generateInitialCurriculumOutline('React')).rejects.toThrow('API Error');
-  }, 10000);
-});
-
-describe('generateSevenDayPlan', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('should generate valid 7-day learning plan', async () => {
-    const mockPlanData = {
-      days: Array.from({ length: 7 }, (_, i) => ({
-        day: i + 1,
-        task: `- Task for day ${i + 1}`,
-        summaryFocus: i === 0 ? 'Basics' : `Module ${i + 1}`,
-      })),
-    };
-    mockGenerateContent.mockResolvedValue({ text: JSON.stringify(mockPlanData) });
-
-    const result = await generateSevenDayPlan('JavaScript', 'Syllabus', ['Modul 1: Basics', 'Modul 2: Functions']);
-
-    expect(result).not.toBeNull();
-    expect(result?.topic).toBe('JavaScript');
-    expect(result?.days).toHaveLength(7);
-    expect(result?.days[0].summaryFocus).toBe('Basics');
-  });
-});
-
 describe('generateExamQuestions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -185,23 +80,6 @@ describe('generateExamQuestions', () => {
     expect(result).toHaveLength(1);
     expect(result![0].questionText).toBe('What is JSX?');
     expect(result![0].correctAnswer).toBe('Syntax extension');
-  });
-});
-
-describe('generateModuleLectureSummary', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('should return generated material string for a module', async () => {
-    const mockMaterialData = {
-      moduleMaterial: '## Comprehensive Module Material'
-    };
-    mockGenerateContent.mockResolvedValue({ text: JSON.stringify(mockMaterialData) });
-
-    const result = await generateModuleLectureSummary('Generics', 'TypeScript', 'English');
-
-    expect(result).toEqual({ moduleMaterial: '## Comprehensive Module Material' });
   });
 });
 
@@ -416,58 +294,6 @@ describe('sendMessageToTutorStream', () => {
   });
 });
 
-describe('generateModuleLectureSummary additional paths', () => {
-  beforeEach(() => { vi.clearAllMocks(); });
-
-  it('should return null when curriculum outline JSON cannot be parsed', async () => {
-    mockGenerateContent.mockResolvedValue({ text: 'not valid json' });
-    const result = await generateInitialCurriculumOutline('Unknown', 'English');
-    expect(result).toBeNull();
-  });
-
-  it('should return null when curriculum is missing required fields', async () => {
-    mockGenerateContent.mockResolvedValue({ text: JSON.stringify({ moduleTitles: ['M1'] }) });
-    const result = await generateInitialCurriculumOutline('Topic', 'English');
-    expect(result).toBeNull();
-  });
-
-  it('should return cached result on second call with same arguments', async () => {
-    const material = JSON.stringify({ moduleMaterial: 'Cached material content here' });
-    mockGenerateContent.mockResolvedValue({ text: material });
-
-    const result1 = await generateModuleLectureSummary('Cached Module', 'Topic', 'English');
-    expect(result1?.moduleMaterial).toBe('Cached material content here');
-
-    // Second call with same args should hit cache (no additional API call)
-    mockGenerateContent.mockClear();
-    const result2 = await generateModuleLectureSummary('Cached Module', 'Topic', 'English');
-    expect(result2?.moduleMaterial).toBe('Cached material content here');
-    expect(mockGenerateContent).not.toHaveBeenCalled();
-  });
-
-  it('should evict the oldest cache entry when MAX_CACHE_SIZE is exceeded', async () => {
-    mockGenerateContent.mockResolvedValue({ text: JSON.stringify({ moduleMaterial: 'Content' }) });
-
-    // MAX_CACHE_SIZE is 50, so add 51 unique entries
-    for (let i = 0; i <= 50; i++) {
-      await generateModuleLectureSummary(`Evict ${i}`, 'Eviction Topic', 'English');
-    }
-
-    mockGenerateContent.mockClear();
-
-    // The oldest entry "Evict 0" should have been evicted
-    await generateModuleLectureSummary('Evict 0', 'Eviction Topic', 'English');
-    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
-
-    mockGenerateContent.mockClear();
-
-    // A recently added entry "Evict 50" should still be in cache
-    await generateModuleLectureSummary('Evict 50', 'Eviction Topic', 'English');
-    expect(mockGenerateContent).not.toHaveBeenCalled();
-  });
-
-});
-
 describe('generateDetailedQuizExplanation additional paths', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
@@ -616,26 +442,6 @@ describe('generateFlashcardsFromMaterial & generateSevenDayPlan & startChatSessi
   it('should return null when flashcards response cannot be parsed or flashcards array missing', async () => {
     mockGenerateContent.mockResolvedValue({ text: JSON.stringify({ invalid: true }) });
     const result = await generateFlashcardsFromMaterial('Topic', 'Material content here', 'English');
-    expect(result).toBeNull();
-  });
-
-  it('should return null when seven day plan JSON cannot be parsed or days missing', async () => {
-    mockGenerateContent.mockResolvedValue({ text: JSON.stringify({ noDays: true }) });
-    const result = await generateSevenDayPlan('Topic', 'Syllabus', ['M1'], 'English');
-    expect(result).toBeNull();
-  });
-
-  it('should return null when seven day plan JSON contains fewer than 7 days', async () => {
-    const mockPlanData = {
-      days: Array.from({ length: 6 }, (_, i) => ({
-        dayNumber: i + 1,
-        theme: `Theme ${i + 1}`,
-        modules: [`Modul ${i + 1}`],
-        summaryFocus: `Module ${i + 1}`,
-      })),
-    };
-    mockGenerateContent.mockResolvedValue({ text: JSON.stringify(mockPlanData) });
-    const result = await generateSevenDayPlan('Topic', 'Syllabus', ['M1'], 'English');
     expect(result).toBeNull();
   });
 

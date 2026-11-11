@@ -57,7 +57,7 @@ tasks:
         expect_exit: 0
         retry: 1
   - id: T4
-    depends_on: [T1]
+    depends_on: []
     impacts: ["App.tsx callers of generateInitialCurriculumOutline/generateSevenDayPlan/generateModuleLectureSummary - rg -n 'generateInitialCurriculumOutline|generateSevenDayPlan|generateModuleLectureSummary' apps/web/src/App.tsx", "callWithRetries error-string matching used by every service - rg -n 'callWithRetries' apps/web/src/services/gemini", "core.gap.test.ts getAiClient block - rg -n 'getAiClient' apps/web/src/services/gemini/core.gap.test.ts"]
     files: { create: [apps/web/src/services/gemini/aiClient.test.ts, apps/web/src/services/gemini/curriculum.test.ts], modify: [apps/web/src/services/gemini/core.ts, apps/web/src/services/gemini/curriculum.ts, apps/web/src/services/gemini/constants.ts, apps/web/src/services/gemini/core.gap.test.ts, apps/web/src/services/geminiService.test.ts], test: [] }
     idempotency_key: "T4:client-transport-curriculum"
@@ -227,7 +227,7 @@ flowchart TD
     G{{"Plan gate"}} --> T1
     T1["T1 /api/ai JSON tasks"] --> T2["T2 tutor SSE"]
     T2 --> T3["T3 resources web_search"]
-    T1 --> T4["T4 client transport + curriculum"]
+    G --> T4["T4 client transport + curriculum"]
     T4 --> T5["T5 quiz, exam, flashcard"]
     T5 --> T6["T6 tutor chat client"]
     T2 --> T6
@@ -491,3 +491,7 @@ The runner warns about `bun.lock`, `App.tsx` and `geminiService.test.ts` because
 
 - Intent (mapping): Approved by the owner, 2026-11-12.
 - Plan: Approved by the owner, 2026-11-12 (question tool, "Approve, start T1").
+
+## Amendments
+
+- 2026-11-12, v1.1: T4 now depends on nothing instead of `[T1]`. T4 needs only the `/api/ai` response contract (`{text}` plus the error strings in spec 2.3). That contract is fixed in the spec, and T4's files do not overlap with T1's, so T4 runs in parallel with T1. Expand, migrate, contract: T4 adds `callAiTask` and keeps `getAiClient`, `ai` and the Gemini model constants for the services that have not moved yet. T9 removes those, together with the `getAiClient` block in `core.gap.test.ts`.
