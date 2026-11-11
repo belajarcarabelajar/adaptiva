@@ -104,26 +104,31 @@ describe("sendMessageToTutorStream request", () => {
 });
 
 describe("sendMessageToTutorStream response", () => {
-  it("calls onChunk per delta even when frames are split across reads", async () => {
+  it("sends the whole cleaned reply so far even when frames are split across reads", async () => {
     const all = frame({ type: "delta", text: "Halo " }) + frame({ type: "delta", text: "dunia" }) + frame({ type: "done" });
     const pieces = [all.slice(0, 7), all.slice(7, 30), all.slice(30, 41), all.slice(41)];
     fetchMock.mockImplementation(async () => sseResponse(pieces));
 
-    const chunks: string[] = [];
-    await sendMessageToTutorStream({ system: "s", history: [] }, "hi", (t) => chunks.push(t));
+    const texts: string[] = [];
+    await sendMessageToTutorStream({ system: "s", history: [] }, "hi", (t) => texts.push(t));
 
-    expect(chunks.join("")).toBe("Halo dunia");
+    expect(texts).toEqual(["Halo", "Halo dunia"]);
   });
 
   const streamDeltas = async (deltas: string[]) => {
     fetchMock.mockImplementation(async () =>
       sseResponse([...deltas.map((text) => frame({ type: "delta", text })), frame({ type: "done" })]),
     );
-    const chunks: string[] = [];
+    const texts: string[] = [];
     const chat: TutorChat = { system: "s", history: [] };
-    await sendMessageToTutorStream(chat, "hi", (t) => chunks.push(t));
-    return { shown: chunks.join(""), chat };
+    await sendMessageToTutorStream(chat, "hi", (t) => texts.push(t));
+    return { shown: texts[texts.length - 1], chat };
   };
+
+  it("shows the rest of the reply after a later delta rewrites earlier text", async () => {
+    const { shown } = await streamDeltas(["Ini *pen", "ting* sekali. Lanjut", " ke bagian dua."]);
+    expect(shown).toBe("Ini penting sekali. Lanjut ke bagian dua.");
+  });
 
   it("keeps the leading space of a later delta and strips bold markers", async () => {
     const { shown } = await streamDeltas(["Halo", " dunia", " **tebal**"]);

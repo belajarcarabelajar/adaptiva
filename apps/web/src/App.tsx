@@ -1450,7 +1450,6 @@ const App: React.FC = () => {
     setIsTutorTyping(true);
 
     const aiResponseId = `msg-${Date.now()}-ai`;
-    let fullAiResponse = "";
 
     setTutorSession(prev => ({
       ...prev,
@@ -1458,12 +1457,11 @@ const App: React.FC = () => {
     }));
 
     try {
-        await sendMessageToTutorStream(tutorSession.chat, userMessage.text, (chunkText) => {
-        fullAiResponse += chunkText;
+        await sendMessageToTutorStream(tutorSession.chat, userMessage.text, (fullText) => {
         setTutorSession(prev => ({
             ...prev,
-            history: prev.history.map(msg => 
-            msg.id === aiResponseId ? { ...msg, text: fullAiResponse } : msg
+            history: prev.history.map(msg =>
+            msg.id === aiResponseId ? { ...msg, text: fullText } : msg
             )
         }));
         });

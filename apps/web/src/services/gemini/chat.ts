@@ -40,7 +40,7 @@ type TutorFrame = { type?: unknown; text?: unknown };
 export const sendMessageToTutorStream = async (
     chat: TutorChat,
     message: string,
-    onChunk: (chunkText: string) => void
+    onText: (fullText: string) => void
   ): Promise<void> => {
 
   try {
@@ -62,17 +62,16 @@ export const sendMessageToTutorStream = async (
     const decoder = new TextDecoder();
     let buffer = '';
     let reply = '';
-    let emitted = '';
+    let lastSent = '';
     let finished = false;
 
-    // cleanAiOutput trims, so cleaning each small delta on its own would drop the
-    // spaces between words; clean the whole reply so far and emit only the new tail.
+    // The whole reply is cleaned each time because cleanAiOutput trims and can rewrite
+    // earlier text once a closing token arrives (a "*" italic, a "--" split from its space).
     const emitCleaned = () => {
       const cleaned = cleanAiOutput(reply);
-      if (!cleaned.startsWith(emitted)) return;
-      const tail = cleaned.slice(emitted.length);
-      if (tail) onChunk(tail);
-      emitted = cleaned;
+      if (cleaned === lastSent) return;
+      lastSent = cleaned;
+      onText(cleaned);
     };
 
     const handleFrame = (rawFrame: string) => {
@@ -118,6 +117,6 @@ export const sendMessageToTutorStream = async (
     chat.history.splice(0, chat.history.length - kept.length);
   } catch (error) {
     console.error("Error sending streaming message to tutor:", error);
-    onChunk(APOLOGY);
+    onText(APOLOGY);
   }
 };
