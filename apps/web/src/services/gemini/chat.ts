@@ -62,7 +62,18 @@ export const sendMessageToTutorStream = async (
     const decoder = new TextDecoder();
     let buffer = '';
     let reply = '';
+    let emitted = '';
     let finished = false;
+
+    // cleanAiOutput trims, so cleaning each small delta on its own would drop the
+    // spaces between words; clean the whole reply so far and emit only the new tail.
+    const emitCleaned = () => {
+      const cleaned = cleanAiOutput(reply);
+      if (!cleaned.startsWith(emitted)) return;
+      const tail = cleaned.slice(emitted.length);
+      if (tail) onChunk(tail);
+      emitted = cleaned;
+    };
 
     const handleFrame = (rawFrame: string) => {
       const data = rawFrame
@@ -74,8 +85,9 @@ export const sendMessageToTutorStream = async (
       const parsed = JSON.parse(data) as TutorFrame;
       if (parsed.type === 'delta' && typeof parsed.text === 'string' && parsed.text) {
         reply += parsed.text;
-        onChunk(cleanAiOutput(parsed.text));
+        emitCleaned();
       } else if (parsed.type === 'done') {
+        emitCleaned();
         finished = true;
       } else if (parsed.type === 'error') {
         throw new Error(`tutor.chat stream error: ${data}`);

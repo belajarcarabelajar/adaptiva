@@ -112,7 +112,33 @@ describe("sendMessageToTutorStream response", () => {
     const chunks: string[] = [];
     await sendMessageToTutorStream({ system: "s", history: [] }, "hi", (t) => chunks.push(t));
 
-    expect(chunks).toEqual(["Halo", "dunia"]);
+    expect(chunks.join("")).toBe("Halo dunia");
+  });
+
+  const streamDeltas = async (deltas: string[]) => {
+    fetchMock.mockImplementation(async () =>
+      sseResponse([...deltas.map((text) => frame({ type: "delta", text })), frame({ type: "done" })]),
+    );
+    const chunks: string[] = [];
+    const chat: TutorChat = { system: "s", history: [] };
+    await sendMessageToTutorStream(chat, "hi", (t) => chunks.push(t));
+    return { shown: chunks.join(""), chat };
+  };
+
+  it("keeps the leading space of a later delta and strips bold markers", async () => {
+    const { shown } = await streamDeltas(["Halo", " dunia", " **tebal**"]);
+    expect(shown).toBe("Halo dunia tebal");
+  });
+
+  it("keeps a trailing space at a delta boundary", async () => {
+    const { shown } = await streamDeltas(["Ini ", "kalimat"]);
+    expect(shown).toBe("Ini kalimat");
+  });
+
+  it("removes an emoji delta while keeping the surrounding words apart", async () => {
+    const { shown, chat } = await streamDeltas(["Bagus", " \u{1F600}", " sekali"]);
+    expect(shown).toBe("Bagus  sekali");
+    expect(chat.history[1]).toEqual({ role: "assistant", content: "Bagus \u{1F600} sekali" });
   });
 
   it("appends the user turn and the raw concatenated assistant text after done", async () => {
