@@ -150,7 +150,7 @@ tasks:
         expect_exit: 0
         retry: 1
   - id: T10
-    depends_on: [T9]
+    depends_on: [T9, T12]
     impacts: ["production bundle and Functions bundle - bun run build"]
     files: { create: [], modify: [], test: [] }
     idempotency_key: "T10:full-verification"
@@ -188,6 +188,20 @@ tasks:
         expect_exit: 0
         retry: 1
       - cmd: "bun run --cwd apps/web test src/services src/hooks"
+        expect_exit: 0
+        retry: 1
+  - id: T12
+    depends_on: [T6]
+    impacts: ["App.tsx appends each onChunk text to the visible tutor reply - rg -n 'fullAiResponse' apps/web/src/App.tsx"]
+    files: { create: [], modify: [apps/web/src/services/gemini/chat.ts, apps/web/src/services/gemini/chat.test.ts], test: [] }
+    idempotency_key: "T12:tutor-delta-spaces"
+    skip_if: "bun run --cwd apps/web test src/services/gemini/chat.test.ts"
+    verify_exit: 0
+    run:
+      - cmd: "bun run --cwd apps/web test src/services/gemini/chat.test.ts"
+        expect_exit: 1
+        retry: 0
+      - cmd: "bun run --cwd apps/web test src/services/gemini/chat.test.ts"
         expect_exit: 0
         retry: 1
 ---
@@ -258,6 +272,8 @@ flowchart TD
     T11 --> T9["T9 remove Gemini"]
     T8 --> T9
     T9 --> T10["T10 full verification"]
+    T6 --> T12["T12 keep spaces between tutor deltas"]
+    T12 --> T10
     T10 --> V(["Verify fan-out, then PR"])
 ```
 
@@ -511,6 +527,20 @@ Runs: `bun run test`, `bun run test:functions`, `bun test apps/api/src`, `tsc` a
 - [ ] GREEN: `bun test --isolate functions/api/ai`, expected exit 0.
 - [ ] GREEN: `bun run --cwd apps/web test src/services src/hooks`, expected exit 0.
 
+### Task T12: keep spaces between tutor deltas (found in the debt sweep)
+
+`chat.ts:77` runs `cleanAiOutput`, which ends in `.trim()` (`core.ts:114`), on every SSE delta. Claude streams small text fragments, so `"Hello"` followed by `" world"` reaches the screen as `"Helloworld"`. Gemini's chunks were large, which kept this hidden before. This PR introduces the regression, so the fix belongs in this PR.
+
+**Fix:**
+- Accumulate the raw text.
+- After each delta, clean the whole text.
+- Emit only the new suffix of the cleaned text when the previously emitted text is a prefix of it. If it is not a prefix, wait for the next delta or `done`.
+- Leave the `onChunk` contract as it is, because App.tsx appends what it receives.
+
+**Steps:**
+- [ ] RED: `chat.test.ts` sends the deltas `"Halo"`, `" dunia"` and `" **tebal**"`, and expects `"Halo dunia tebal"` (exit 1).
+- [ ] GREEN: exit 0.
+
 ## Size warnings (runner)
 
 The runner warns about `bun.lock`, `App.tsx` and `geminiService.test.ts` because they are over 20,000 bytes. `bun.lock` is generated. `App.tsx` changes only the `Chat` type. `geminiService.test.ts` shrinks in each of T4-T7, because its blocks move to per-domain test files. Adaptiva has no `size:check` gate (`rg -n size package.json` finds nothing), so these are notes only, not blockers.
@@ -539,3 +569,23 @@ The runner warns about `bun.lock`, `App.tsx` and `geminiService.test.ts` because
   - New parent task T11 (after T1, T2, T3, T5, T6, T7) routes `tutor.chat` and `resources.search` in `_core.ts` through the two modules and removes the obsolete SDK-shaped blocks from `geminiService.test.ts`.
   - T9 now depends on T11 and T8.
   - AC traceability is unchanged except that AC-4 and AC-5 are also proven by `core-routes.test.ts` (T11).
+
+## Follow-up backlog (debt sweep, 2026-11-12, run early at the owner's request)
+
+| # | Debt | Surface | Finish line | Class |
+|---|---|---|---|---|
+| D1 | The refusal message says points stay "because the AI service still bills", but pre-output refusals are billed only for `bio`, `frontier_llm` and `reasoning_extraction` (refusals-and-fallback docs, fetched 2026-11-12) | `functions/api/ai/_core.ts` refusal branch | Refund pre-output refusals in the other categories, with a test per class in `core.test.ts` | NOW candidate |
+| D2 | A normal stop with empty text answers 200 `{"text":""}` and keeps the points; the client then shows "Failed to generate" | `_core.ts` success branch | Map empty text to 400 `ai_generation_failed` with a refund, plus a test | NOW candidate |
+| D3 | No tsconfig typechecks `functions/` (E2) | new `functions/tsconfig.json` + `typecheck:functions` script | `bun x tsc -p functions` exit 0, wired into `scripts/deploy-website.sh` | NOW candidate |
+| D4 | `functions/api/ai/index.ts` has no test (OPTIONS, CORS, env key wiring) | new `functions/api/ai/__tests__/index.test.ts` | test exit 0 | NOW candidate |
+| D5 | Tutor delta trim | `chat.ts` | moved into the plan as T12 | IN PLAN |
+| D6 | Leftover `- day: The day number (1-7).` line in the 7-day prompt; unused `GeminiSevenDayPlanResponse` type; unused Gemini `MODEL_*` constants | `curriculum.ts`, `types.ts`, `constants.ts` | moved into T9 scope | IN PLAN |
+| D7 | `TutorChat.history` grows without limit in memory (the request is capped at 40) | `chat.ts` | Trim history to the last 40 turns after `done`, plus a test | NOW candidate |
+| D8 | Spec 2.2 says `_claude.ts` is the only SDK importer; `_tutor.ts` and `_search.ts` import it too | `docs/code-plan/specs/2026-11-12-migrasi-claude-design.md` | Text updated | NOW candidate |
+| D9 | No per-action usage log, so the cost of Sonnet plus search at the old point prices is invisible | `_core.ts` | `console.log` of `usage` per task (tokens, `web_search_requests`), visible in `pages:tail` | NOW candidate |
+| D10 | `apps/api/src/listen-host.js:14` message still names `/api/gemini` and `GEMINI_API_KEY`; `apps/api/package.json` keeps unused `http-proxy-middleware` | `apps/api` | moved into T9 scope | IN PLAN |
+| D11 | The functions bundle with the SDK was never built (`bun run build` builds only the web app) | T10 | `bunx wrangler pages functions build` exit 0 added to T10 | IN PLAN |
+| D12 | `_search.ts` keeps only the final turn's text after `pause_turn` | `_search.ts` | Join the text of every turn, plus a test | LATER (`defer: final turn holds the answer in observed shapes, upgrade-trigger: a resources reply that is cut short in production`) |
+| D13 | `pr-registry.mjs claim` silently ignores unknown flags such as `--project` | vivera repo | Reject unknown flags | LATER (`defer: other repo, upgrade-trigger: next vivera session`) |
+| D14 | A request without an `Origin` header to the dev server's `/api/*` returns 500 (CORS, pre-existing) | `apps/api/src/app.js` | 403 JSON or allowed | LATER (`defer: dev only, upgrade-trigger: a tool calls the dev API without Origin`) |
+| D15 | The owner's `.env.local` needs `ANTHROPIC_API_KEY` for local dev | owner's machine | Owner action; not written by the agent (credential) | OWNER |
