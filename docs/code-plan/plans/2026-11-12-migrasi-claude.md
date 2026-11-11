@@ -137,13 +137,13 @@ tasks:
     impacts: ["pointCosts.test.ts imports ACTION_POINT_COSTS - rg -n 'ACTION_POINT_COSTS' apps/web/src", "SPA redirect rule order - rg -n 'api' apps/web/public/_redirects", "deploy script test gate runs the suites - rg -n 'test' scripts/deploy-website.sh", "docs mention GEMINI - rg -n -i 'gemini' README.md .env.example package.json wrangler.jsonc"]
     files: { create: [], modify: [apps/web/package.json, apps/web/index.html, apps/web/public/_redirects, apps/web/src/services/pointCosts.test.ts, package.json, bun.lock, .env.example, README.md, wrangler.jsonc], test: [] }
     idempotency_key: "T9:remove-gemini"
-    skip_if: "bun -e \"const g = Bun.spawnSync(['rg','-l','-i','google/genai|api/gemini','apps','functions','package.json','--glob','!**/node_modules/**']); process.exit(g.stdout.toString().trim() === '' ? 0 : 1)\""
+    skip_if: "bun -e \"const g = Bun.spawnSync(['rg','-l','-i','google/genai|api/gemini','apps','functions','package.json','--glob','!**/node_modules/**','--glob','!*.test.*']); process.exit(g.stdout.toString().trim() === '' ? 0 : 1)\""
     verify_exit: 0
     run:
-      - cmd: "bun -e \"const g = Bun.spawnSync(['rg','-l','-i','google/genai|api/gemini','apps','functions','package.json','--glob','!**/node_modules/**']); process.exit(g.stdout.toString().trim() === '' ? 0 : 1)\""
+      - cmd: "bun -e \"const g = Bun.spawnSync(['rg','-l','-i','google/genai|api/gemini','apps','functions','package.json','--glob','!**/node_modules/**','--glob','!*.test.*']); process.exit(g.stdout.toString().trim() === '' ? 0 : 1)\""
         expect_exit: 1
         retry: 0
-      - cmd: "bun -e \"const g = Bun.spawnSync(['rg','-l','-i','google/genai|api/gemini','apps','functions','package.json','--glob','!**/node_modules/**']); process.exit(g.stdout.toString().trim() === '' ? 0 : 1)\""
+      - cmd: "bun -e \"const g = Bun.spawnSync(['rg','-l','-i','google/genai|api/gemini','apps','functions','package.json','--glob','!**/node_modules/**','--glob','!*.test.*']); process.exit(g.stdout.toString().trim() === '' ? 0 : 1)\""
         expect_exit: 0
         retry: 0
       - cmd: "bun run --cwd apps/web test src/services/pointCosts.test.ts"
@@ -304,7 +304,7 @@ flowchart TD
 | AC-4 | T2, T6, T11 | `bun test --isolate functions/api/ai/__tests__/tutor-stream.test.ts` and `bun run --cwd apps/web test src/services/gemini/chat.test.ts` | SSE frames delta, done and error; history appended |
 | AC-5 | T3, T7, T11 | `bun test --isolate functions/api/ai/__tests__/resources.test.ts` and `bun run --cwd apps/web test src/services/gemini/resources.test.ts` | sources de-duplicated from `web_search_tool_result`, `pause_turn` at most 2 |
 | AC-6 | T4, T5, T6, T7 | `bun x tsc --noEmit --project apps/web/tsconfig.json` | exit 0 with no change to the call sites in App.tsx and the hooks, except the `Chat` type |
-| AC-7 | T9, T10 | `bun run test`, `bun run test:functions`, `bun test apps/api/src`, `bun run build` | all exit 0; `rg` for google/genai and api/gemini is empty |
+| AC-7 | T9, T10 | `bun run test`, `bun run test:functions`, `bun test apps/api/src`, `bun run build` | all exit 0; `rg` for google/genai and api/gemini outside `*.test.*` is empty (two tests assert the removal) |
 
 **Assumptions & Open Questions:**
 - An effort of `medium` on Sonnet 5.5 follows the owner's request, even though the docs suggest `low` for content generation.
