@@ -589,6 +589,7 @@ The runner warns about `bun.lock`, `App.tsx` and `geminiService.test.ts` because
 | D13 | `pr-registry.mjs claim` silently ignores unknown flags such as `--project` | vivera repo | Reject unknown flags | LATER (`defer: other repo, upgrade-trigger: next vivera session`) |
 | D14 | A request without an `Origin` header to the dev server's `/api/*` returns 500 (CORS, pre-existing) | `apps/api/src/app.js` | 403 JSON or allowed | LATER (`defer: dev only, upgrade-trigger: a tool calls the dev API without Origin`) |
 | D15 | The owner's `.env.local` needs `ANTHROPIC_API_KEY` for local dev | owner's machine | Owner action; not written by the agent (credential) | OWNER |
+| D16 | The D9 usage log for `resources.search` reads only the final message's `usage`, so searches resumed after `pause_turn` are under-counted | `_search.ts` | Sum `usage` across turns, plus a test | LATER (`defer: log only, no billing effect, upgrade-trigger: usage numbers are used for pricing`) |
 
 ## Closeout status
 
