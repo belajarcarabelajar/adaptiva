@@ -16,4 +16,12 @@ describe('Vite dev server', () => {
       expect(LOOPBACK_HOSTS).toContain(host);
     }
   });
+
+  // Otherwise Vite's SPA fallback answers /api/auth/* with index.html and 200.
+  it('proxies every /api path to the local API server', async () => {
+    const { default: config } = await import('../vite.config');
+    const proxy = config.server?.proxy as Record<string, { target: string }>;
+    expect(Object.keys(proxy)).toEqual(['/api']);
+    expect(proxy['/api'].target).toBe('http://127.0.0.1:3001');
+  });
 });

@@ -7,7 +7,9 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api/gemini': {
+      // All of /api, so the local API answers unknown and auth paths with JSON
+      // instead of Vite's SPA fallback serving index.html.
+      '/api': {
         // The API binds 127.0.0.1 only; "localhost" may resolve to ::1 first.
         target: 'http://127.0.0.1:3001',
         changeOrigin: true,

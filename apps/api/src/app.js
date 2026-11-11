@@ -48,6 +48,12 @@ export function createApp({ apiKey, webDist, port, allowedOrigins = defaultAllow
 
   // Auth lives only in the Cloudflare Pages Functions; without this the SPA
   // fallback answers 200 HTML and the client fails on r.json().
+  // /me answers the same signed-out 401 as functions/api/auth/me.ts, which
+  // useAuth treats as "not signed in" instead of an error.
+  app.get('/api/auth/me', (req, res) => {
+    res.status(401).json({ error: 'not_authenticated' });
+  });
+
   app.all(/^\/api\/auth(\/.*)?$/, (req, res) => {
     res.status(501).json({
       error: 'Auth is not implemented by the local API server; it runs only in Cloudflare Pages Functions (wrangler pages dev).'
