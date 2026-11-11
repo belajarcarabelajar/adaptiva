@@ -32,7 +32,7 @@
 | Rule # | Destination | Why | Approval |
 |---|---|---|---|
 | 1 | in-repo `MEMORY.md` | Repo-scoped copy | not required |
-| 1 | `~/AGENTS.md` (global) | Recurs in every non-vivera repo that uses the PR registry | PENDING user approval |
+| 1 | `~/AGENTS.md` (global) | Recurs in every non-vivera repo that uses the PR registry | DECLINED by the owner (2026-11-12) |
 | 2 | in-repo `MEMORY.md` | Repo-scoped | not required |
 
 ## Environment Improvements
