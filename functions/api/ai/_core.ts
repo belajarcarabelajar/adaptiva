@@ -229,6 +229,20 @@ export async function handleAiRequest<E extends AiEnv>(
               message: `Layanan AI mengalami kendala${status}. ${refundNote(outcome)}`,
             };
           },
+          onRefusalBeforeOutput: async (category) => {
+            const reason = category || "refusal";
+            if (BILLED_REFUSAL_CATEGORIES.has(category ?? "")) {
+              return {
+                error: "ai_generation_blocked",
+                message: `AI terhenti dengan alasan: ${reason}. Poin tidak dikembalikan karena layanan AI tetap menagih permintaan ini.`,
+              };
+            }
+            const outcome = await refundCharge(request, env, deps, charge);
+            return {
+              error: "ai_generation_blocked",
+              message: `AI terhenti dengan alasan: ${reason}. ${refundNote(outcome)}`,
+            };
+          },
           headers: { "x-adaptiva-points": String(pointResult.remainingPoints) },
         },
       );

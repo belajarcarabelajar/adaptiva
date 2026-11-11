@@ -56,6 +56,7 @@ export function createTutorSseResponse(
   run: (onDelta: (t: string) => void) => Promise<TutorRunResult>,
   hooks: {
     onErrorBeforeOutput: (err: unknown) => Promise<{ error: string; message: string }>;
+    onRefusalBeforeOutput?: (category: string | null) => Promise<{ error: string; message: string }>;
     headers?: HeadersInit;
   },
 ): Response {
@@ -80,11 +81,18 @@ export function createTutorSseResponse(
       });
       if (result.stopReason === "refusal") {
         const category = result.refusalCategory ?? "unknown";
-        await send({
-          type: "error",
+        let payload = {
           error: "ai_generation_blocked",
           message: `Permintaan ditolak oleh filter keamanan AI (kategori: ${category}).`,
-        });
+        };
+        if (!started && hooks.onRefusalBeforeOutput) {
+          try {
+            payload = await hooks.onRefusalBeforeOutput(result.refusalCategory);
+          } catch {
+            // Keep the plain blocked frame; the stream must still close cleanly.
+          }
+        }
+        await send({ type: "error", error: payload.error, message: payload.message });
       } else {
         await send({ type: "done" });
       }
