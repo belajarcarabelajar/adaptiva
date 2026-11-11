@@ -60,7 +60,7 @@ function sessionJson(userId: string, extra: Record<string, unknown> = {}): strin
 }
 
 function requestFor(sid: string): Request {
-  return new Request("https://example.com/api/gemini", {
+  return new Request("https://example.com/api/ai", {
     headers: new Headers({ cookie: `${SESSION_COOKIE}=${sid}` }),
   });
 }

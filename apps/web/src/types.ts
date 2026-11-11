@@ -1,5 +1,3 @@
-import { Chat } from "@google/genai";
-
 export interface CurriculumModule {
   title: string;
   moduleMaterial?: string; 
@@ -54,14 +52,6 @@ export interface GeminiModuleDetailResponse {
   moduleMaterial: string; 
 }
 
-export interface GeminiSevenDayPlanResponse {
-  days: Array<{
-    day: number;
-    task: string;
-    summaryFocus: string;
-  }>;
-}
-
 export interface GeminiQuizQuestion {
   question: string;
   options: string[];
@@ -69,8 +59,13 @@ export interface GeminiQuizQuestion {
   explanation?: string; 
 }
 
+export interface TutorChat {
+  system: string;
+  history: { role: "user" | "assistant"; content: string }[];
+}
+
 export interface TutorSession {
-  chat: Chat | null;
+  chat: TutorChat | null;
   history: ChatMessage[];
   initialTutorGreeting?: string; 
 }

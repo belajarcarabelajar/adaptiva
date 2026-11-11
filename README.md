@@ -4,7 +4,7 @@
 
 **AI-Powered Adaptive Learning Companion**
 
-An intelligent, interactive learning platform that generates tailored curriculums, interactive lessons, smart flashcards, and quizzes powered by Google Gemini AI.
+An intelligent, interactive learning platform that generates tailored curriculums, interactive lessons, smart flashcards, and quizzes powered by the Claude API.
 
 **Live demo: [adaptiva.belajarcarabelajar.com](https://adaptiva.belajarcarabelajar.com)**
 
@@ -14,7 +14,7 @@ An intelligent, interactive learning platform that generates tailored curriculum
 [![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?logo=vite)](https://vitejs.dev/)
 [![Express](https://img.shields.io/badge/Express-4.21-000000?logo=express)](https://expressjs.com/)
 [![Cloudflare Pages](https://img.shields.io/badge/Cloudflare_Pages-Deployed-F38020?logo=cloudflare)](https://pages.cloudflare.com/)
-[![Google Gemini API](https://img.shields.io/badge/Google_Gemini-2.5-4285F4?logo=google)](https://ai.google.dev/)
+[![Claude API](https://img.shields.io/badge/Claude_API-Anthropic-D97757?logo=anthropic)](https://docs.anthropic.com/)
 
 [Features](#-features) • [Architecture](#-architecture) • [Getting Started](#-getting-started) • [Environment Variables](#-environment-variables) • [Scripts](#-available-scripts) • [Deployment](#-deployment)
 
@@ -27,10 +27,10 @@ An intelligent, interactive learning platform that generates tailored curriculum
 ## ✨ Features
 
 - 🧠 **Adaptive Curriculum Generation**: Input any subject or topic to instantly generate structured, multi-module learning paths customized to your current skill level.
-- 💬 **Interactive AI Tutor**: Context-aware AI assistant powered by Google Gemini for step-by-step guidance, deep-dive explanations, and Q&A.
+- 💬 **Interactive AI Tutor**: Context-aware AI assistant powered by Claude for step-by-step guidance, deep-dive explanations, and Q&A.
 - 📝 **Smart Quizzes & Flashcards**: Auto-generated practice quizzes, flashcards, and instant feedback to test and reinforce comprehension.
 - 📐 **Rich Math & Content Formatting**: Native support for LaTeX mathematical expressions via KaTeX, dynamic Markdown rendering, and sanitized output using DOMPurify.
-- 🔒 **Secure API Architecture**: Dual backend support using Express proxy locally and Cloudflare Pages Functions in production to keep Gemini API credentials safe.
+- 🔒 **Secure API Architecture**: Dual backend support using Express proxy locally and Cloudflare Pages Functions in production to keep the Anthropic API key on the server.
 - ⚡ **Bun Monorepo**: High-performance development workflow leveraging Bun workspaces for seamless dependency management and instant startup.
 
 ---
@@ -43,11 +43,11 @@ Adaptiva is structured as a **Bun workspaces monorepo**:
 adaptiva/
 ├── apps/
 │   ├── web/            # Frontend SPA (React 19 + Vite 6 + KaTeX + CSS)
-│   └── api/            # Local Express proxy server (hides Gemini API key)
+│   └── api/            # Local Express dev server (POST /api/ai, holds the Anthropic API key)
 ├── packages/
 │   └── shared/         # Shared TypeScript interfaces, types, and domain helpers
 ├── functions/
-│   └── api/            # Cloudflare Pages Functions (Edge API proxy for production)
+│   └── api/            # Cloudflare Pages Functions (production API, including /api/ai)
 ├── scripts/            # Deployment & Cloudflare KV setup utilities
 ├── wrangler.jsonc      # Cloudflare Pages configuration & KV bindings
 ├── package.json        # Workspace root configuration
@@ -58,11 +58,20 @@ adaptiva/
 
 ```mermaid
 graph TD
-    A["Client Web App (React 19)"] -->|Dev: HTTP Proxy / API Request| B["Local Express Proxy Server (:3001)"]
-    A -->|Prod: Cloudflare Pages| C["Cloudflare Pages Functions (/api)"]
-    B -->|SDK Call| D["Google Gemini 2.5 API"]
-    C -->|SDK Call| D
+    A["Client Web App (React 19)"] -->|"Dev: Vite proxies /api"| B["Local Express server (:3001), POST /api/ai"]
+    A -->|Prod: Cloudflare Pages| C["Pages Function /api/ai"]
+    B --> D["Claude API (Anthropic)"]
+    C --> D
 ```
+
+In development the Express server in `apps/api` serves `POST /api/ai` without login or points and reads `ANTHROPIC_API_KEY` from `.env.local`. In production the Pages Function in `functions/api/ai/` handles the same route and reads the Pages secret `ANTHROPIC_API_KEY`.
+
+Models:
+
+| Model | Used for |
+| :--- | :--- |
+| Sonnet 5.5 | Curriculum, module, exam, resources (with web search) |
+| Haiku 5.5 | Quiz, flashcard, tutor chat |
 
 ---
 
@@ -71,7 +80,7 @@ graph TD
 ### Prerequisites
 
 - **[Bun](https://bun.sh)** `>= 1.2`
-- **Google Gemini API Key** (Get one at [Google AI Studio](https://aistudio.google.com/))
+- **Anthropic API key** (create one in the [Claude Console](https://console.anthropic.com/))
 
 ### Installation
 
@@ -91,9 +100,9 @@ graph TD
    ```bash
    cp .env.example .env.local
    ```
-   Add your Gemini API key:
+   Add your Anthropic API key:
    ```env
-   GEMINI_API_KEY=your_actual_gemini_api_key_here
+   ANTHROPIC_API_KEY=your_anthropic_api_key_here
    ```
 
 4. **Run Development Servers**:
@@ -116,10 +125,10 @@ graph TD
 
 | Variable | Scope | Description | Required |
 | :--- | :--- | :--- | :---: |
-| `GEMINI_API_KEY` | Monorepo / Cloudflare Pages | API Key for Google Gemini services | Yes |
+| `ANTHROPIC_API_KEY` | `.env.local` (dev) / Pages secret (prod) | API key for the Claude API | Yes |
 | `PORT` | `apps/api` | Port for the Express backend proxy (Default: `3001`) | No |
 | `ALLOWED_ORIGINS` | `apps/api` | Comma-separated CORS origins (Default: `localhost` and `127.0.0.1` on port `3000` and on `PORT`) | No |
-| `HOST` | `apps/api` | Bind address (Default: `127.0.0.1`). A non-loopback value is refused unless `ALLOW_PUBLIC_HOST=1`, because the Gemini proxy has no auth | No |
+| `HOST` | `apps/api` | Bind address (Default: `127.0.0.1`). A non-loopback value is refused unless `ALLOW_PUBLIC_HOST=1`, because the local `/api/ai` route has no auth | No |
 | `GOOGLE_CLIENT_ID` | Cloudflare Pages | Google OAuth client ID for sign-in | For Sign-in |
 | `GOOGLE_CLIENT_SECRET` | Cloudflare Pages | Google OAuth client secret for sign-in | For Sign-in |
 | `AUTH_BASE_URL` | Cloudflare Pages | Overrides the OAuth redirect origin, for example in local dev | No |
@@ -152,7 +161,7 @@ All commands can be executed from the monorepo root using `bun`:
 Adaptiva is optimized for deployment on **Cloudflare Pages**.
 
 1. **Set Cloudflare Secrets**:
-   Upload your Gemini API key to Cloudflare Pages:
+   Upload your Anthropic API key as the Pages secret `ANTHROPIC_API_KEY`:
    ```bash
    bun run pages:secret:set
    ```

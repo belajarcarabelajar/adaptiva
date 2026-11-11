@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ACTION_POINT_COSTS } from "../../../../functions/api/gemini/[[path]]";
+import { ACTION_POINT_COSTS } from "../../../../functions/api/ai/_tasks";
 
 describe("Point costs system mapping", () => {
   it("defines point costs for all action headers sent by frontend", () => {

@@ -1,7 +1,6 @@
-import { Chat } from "@google/genai";
 import React, { useState, useCallback, useEffect, useRef, memo, useMemo } from 'react';
 import { 
-    Curriculum, SevenDayPlan, QuizQuestion, ChatMessage, TutorSession, 
+    Curriculum, SevenDayPlan, QuizQuestion, ChatMessage, TutorSession, TutorChat, 
     CurriculumModule, HistoryItem, DailyPlan, StoredQuizAttempt, ActiveTab, 
     CurriculumSubTab, ExamQuestion, ExamConfiguration, ExamAttempt, ExamQuestionType,
     Flashcard, FlashcardDeck, FlashcardStatus, FlashcardDifficulty, FlashcardSubView, GeminiFlashcardItem,
@@ -631,7 +630,7 @@ const App: React.FC = () => {
     let curriculumOutlineData: Curriculum | null = null;
     let planData: SevenDayPlan | null = null;
     let initialTutorMessage = "";
-    let newChat: Chat | null = null; // Using Chat from @google/genai
+    let newChat: TutorChat | null = null;
     let fetchedResources: LearningResource | null = null;
 
     try {
@@ -1451,7 +1450,6 @@ const App: React.FC = () => {
     setIsTutorTyping(true);
 
     const aiResponseId = `msg-${Date.now()}-ai`;
-    let fullAiResponse = "";
 
     setTutorSession(prev => ({
       ...prev,
@@ -1459,12 +1457,11 @@ const App: React.FC = () => {
     }));
 
     try {
-        await sendMessageToTutorStream(tutorSession.chat, userMessage.text, (chunkText) => {
-        fullAiResponse += chunkText;
+        await sendMessageToTutorStream(tutorSession.chat, userMessage.text, (fullText) => {
         setTutorSession(prev => ({
             ...prev,
-            history: prev.history.map(msg => 
-            msg.id === aiResponseId ? { ...msg, text: fullAiResponse } : msg
+            history: prev.history.map(msg =>
+            msg.id === aiResponseId ? { ...msg, text: fullText } : msg
             )
         }));
         });

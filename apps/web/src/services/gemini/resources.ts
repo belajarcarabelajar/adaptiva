@@ -1,7 +1,38 @@
-import { GenerateContentResponse } from "@google/genai";
 import { LearningResource } from '../../types';
-import { callWithRetries, getAiClient, ai } from './core';
-import { MODEL_RESOURCES } from './constants';
+import { callWithRetries } from './core';
+
+const aiTaskUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/ai` : 'http://localhost:3000/api/ai';
+
+type ResourcesReply = { text: string; sources: { url?: unknown; title?: unknown }[] };
+
+// callAiTask returns only the text, and resources.search also returns sources. The thrown message keeps
+// the "<status> <error>: <message>" form because callWithRetries matches on those substrings.
+const callResourcesSearch = async (prompt: string): Promise<ResourcesReply> => {
+  const response = await fetch(aiTaskUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ task: 'resources.search', prompt }),
+  });
+  const raw = await response.text();
+  let data: { text?: unknown; sources?: unknown; error?: unknown; message?: unknown } | null = null;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    data = null;
+  }
+  if (!response.ok) {
+    const error = typeof data?.error === 'string' ? data.error : response.statusText;
+    const message = typeof data?.message === 'string' ? data.message : '';
+    throw new Error(`${response.status} ${error}: ${message}`);
+  }
+  return {
+    text: typeof data?.text === 'string' ? data.text : '',
+    sources: Array.isArray(data?.sources)
+      ? data.sources.filter((s): s is { url?: unknown; title?: unknown } => typeof s === 'object' && s !== null)
+      : [],
+  };
+};
 
 export const fetchLearningResources = async (
   topic: string,
@@ -38,54 +69,25 @@ export const fetchLearningResources = async (
     **CRITICAL INSTRUCTIONS:**
     - Your output must be PURE Markdown text.
     - **You are strictly forbidden from including any URLs or hyperlinks.** Do not use Markdown link syntax like \`[text](url)\`. Do not write out full URLs as plain text. Your entire response will be rejected if it contains a URL.
-    - Your role is ONLY to suggest the names of resources and describe them. The application will handle finding and displaying verified web links separately from Google Search.
+    - Your role is ONLY to suggest the names of resources and describe them.
     - Do NOT invent or hallucinate resources. List only real, well-known, and credible books, articles, and videos.
     - Do NOT include a category for "Websites" or "Online Courses".
     - Do NOT add any conversational intro or outro. Your response must begin directly with the first Markdown heading.
     - If generating content for Bahasa Indonesia, use "kamu" instead of "Anda".
   `;
 
-  try {
-    const response = await callWithRetries<GenerateContentResponse>(
-      () => ai.models.generateContent({
-        model: MODEL_RESOURCES,
-        contents: prompt,
-        config: {
-          tools: [{ googleSearch: {} }],
-        },
-      }),
-      `fetchLearningResources for ${topic}`
-    );
+  const response = await callWithRetries(
+    () => callResourcesSearch(prompt),
+    `fetchLearningResources for ${topic}`
+  );
 
-    const content = response.text;
-    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
-      ?.filter(chunk => chunk.web && chunk.web.uri && chunk.web.title)
-      .map(chunk => ({ web: { uri: chunk.web!.uri!, title: chunk.web!.title! } })) || [];
-
-    if (content) {
-      return { content, sources };
-    }
-    console.error("Failed to get content for learning resources from Gemini. Full response:", response);
+  if (!response.text) {
+    console.error("Failed to get content for learning resources. Full response:", response);
     return null;
-  } catch (firstError) {
-    console.warn(`Search-grounded fetchLearningResources for "${topic}" failed. Retrying without search tool...`, firstError);
-    // Fallback: Try generating resources without the googleSearch tool in case grounding service is failing
-    try {
-      const fallbackResponse = await callWithRetries<GenerateContentResponse>(
-        () => ai.models.generateContent({
-          model: MODEL_RESOURCES,
-          contents: prompt,
-        }),
-        `fetchLearningResources (fallback) for ${topic}`
-      );
-      const content = fallbackResponse.text;
-      if (content) {
-        return { content, sources: [] };
-      }
-      return null;
-    } catch (fallbackError) {
-      console.error(`Error fetching learning resources for topic "${topic}" (both primary & fallback failed):`, fallbackError);
-      throw fallbackError;
-    }
   }
+  const sources = response.sources
+    .filter((s): s is { url: string; title: string } =>
+      typeof s.url === 'string' && s.url !== '' && typeof s.title === 'string' && s.title !== '')
+    .map(s => ({ web: { uri: s.url, title: s.title } }));
+  return { content: response.text, sources };
 };

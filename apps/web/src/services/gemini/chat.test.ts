@@ -1,0 +1,221 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { startChatSession, sendMessageToTutorStream } from "./chat";
+import type { TutorChat } from "../../types";
+
+vi.spyOn(console, "log").mockImplementation(() => {});
+vi.spyOn(console, "warn").mockImplementation(() => {});
+vi.spyOn(console, "error").mockImplementation(() => {});
+
+const APOLOGY = "I'm sorry, I encountered an error trying to respond. Please try again.";
+
+const sseResponse = (pieces: string[], status = 200) => {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const piece of pieces) controller.enqueue(encoder.encode(piece));
+      controller.close();
+    },
+  });
+  return new Response(body, { status, headers: { "content-type": "text/event-stream" } });
+};
+
+const frame = (payload: unknown) => `data: ${JSON.stringify(payload)}\n\n`;
+
+let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
+
+beforeEach(() => {
+  fetchMock = vi.fn<typeof fetch>();
+  vi.stubGlobal("fetch", fetchMock);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+const sentBody = () => JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+
+describe("startChatSession", () => {
+  it("returns an English tutor system prompt and empty history by default", () => {
+    const chat = startChatSession("TypeScript");
+    expect(chat.history).toEqual([]);
+    expect(chat.system).toContain('You are a helpful and patient personal tutor, an expert professor in the topic of "TypeScript".');
+    expect(chat.system).not.toContain("Please conduct the tutoring session primarily in");
+  });
+
+  it("returns the Bahasa Indonesia system prompt for Bahasa Indonesia", () => {
+    const chat = startChatSession("Fisika Kuantum", "Bahasa Indonesia");
+    expect(chat.system).toContain('Kamu adalah tutor pribadi yang sabar dan membantu, seorang profesor ahli dalam topik "Fisika Kuantum".');
+    expect(chat.system).toContain("Sesi ini akan berlangsung dalam Bahasa Indonesia.");
+    expect(chat.history).toEqual([]);
+  });
+
+  it("returns the other-language system prompt naming the language", () => {
+    const chat = startChatSession("Physics", "Spanish");
+    expect(chat.system).toContain("Please conduct the tutoring session primarily in Spanish.");
+    expect(chat.system).toContain("If the main topic is learning Spanish itself, then act as a language tutor for Spanish.");
+  });
+});
+
+describe("sendMessageToTutorStream request", () => {
+  it("POSTs task, system and history plus the new user turn to /api/ai with credentials", async () => {
+    fetchMock.mockImplementation(async () => sseResponse([frame({ type: "done" })]));
+    const chat: TutorChat = {
+      system: "sys",
+      history: [
+        { role: "user", content: "halo" },
+        { role: "assistant", content: "hai" },
+      ],
+    };
+
+    await sendMessageToTutorStream(chat, "apa itu atom?", () => {});
+
+    const [url, init] = fetchMock.mock.calls[0];
+    const parsedUrl = new URL(String(url));
+    expect(parsedUrl.origin).toBe(window.location.origin);
+    expect(parsedUrl.pathname).toBe("/api/ai");
+    expect(init?.method).toBe("POST");
+    expect(init?.credentials).toBe("include");
+    expect(new Headers(init?.headers).get("content-type")).toBe("application/json");
+    expect(sentBody()).toEqual({
+      task: "tutor.chat",
+      system: "sys",
+      messages: [
+        { role: "user", content: "halo" },
+        { role: "assistant", content: "hai" },
+        { role: "user", content: "apa itu atom?" },
+      ],
+    });
+  });
+
+  it("sends at most 40 turns, dropping the oldest pairs so the first turn is a user turn", async () => {
+    fetchMock.mockImplementation(async () => sseResponse([frame({ type: "done" })]));
+    const history: TutorChat["history"] = [];
+    for (let i = 0; i < 25; i++) {
+      history.push({ role: "user", content: `u${i}` }, { role: "assistant", content: `a${i}` });
+    }
+
+    await sendMessageToTutorStream({ system: "s", history }, "baru", () => {});
+
+    const messages = sentBody().messages as { role: string; content: string }[];
+    expect(messages.length).toBe(39);
+    expect(messages[0]).toEqual({ role: "user", content: "u6" });
+    expect(messages[messages.length - 1]).toEqual({ role: "user", content: "baru" });
+  });
+});
+
+describe("sendMessageToTutorStream response", () => {
+  it("sends the whole cleaned reply so far even when frames are split across reads", async () => {
+    const all = frame({ type: "delta", text: "Halo " }) + frame({ type: "delta", text: "dunia" }) + frame({ type: "done" });
+    const pieces = [all.slice(0, 7), all.slice(7, 30), all.slice(30, 41), all.slice(41)];
+    fetchMock.mockImplementation(async () => sseResponse(pieces));
+
+    const texts: string[] = [];
+    await sendMessageToTutorStream({ system: "s", history: [] }, "hi", (t) => texts.push(t));
+
+    expect(texts).toEqual(["Halo", "Halo dunia"]);
+  });
+
+  const streamDeltas = async (deltas: string[]) => {
+    fetchMock.mockImplementation(async () =>
+      sseResponse([...deltas.map((text) => frame({ type: "delta", text })), frame({ type: "done" })]),
+    );
+    const texts: string[] = [];
+    const chat: TutorChat = { system: "s", history: [] };
+    await sendMessageToTutorStream(chat, "hi", (t) => texts.push(t));
+    return { shown: texts[texts.length - 1], chat };
+  };
+
+  it("shows the rest of the reply after a later delta rewrites earlier text", async () => {
+    const { shown } = await streamDeltas(["Ini *pen", "ting* sekali. Lanjut", " ke bagian dua."]);
+    expect(shown).toBe("Ini penting sekali. Lanjut ke bagian dua.");
+  });
+
+  it("keeps the leading space of a later delta and strips bold markers", async () => {
+    const { shown } = await streamDeltas(["Halo", " dunia", " **tebal**"]);
+    expect(shown).toBe("Halo dunia tebal");
+  });
+
+  it("keeps a trailing space at a delta boundary", async () => {
+    const { shown } = await streamDeltas(["Ini ", "kalimat"]);
+    expect(shown).toBe("Ini kalimat");
+  });
+
+  it("removes an emoji delta while keeping the surrounding words apart", async () => {
+    const { shown, chat } = await streamDeltas(["Bagus", " \u{1F600}", " sekali"]);
+    expect(shown).toBe("Bagus  sekali");
+    expect(chat.history[1]).toEqual({ role: "assistant", content: "Bagus \u{1F600} sekali" });
+  });
+
+  it("appends the user turn and the raw concatenated assistant text after done", async () => {
+    fetchMock.mockImplementation(async () =>
+      sseResponse([frame({ type: "delta", text: "Atom adalah " }), frame({ type: "delta", text: "partikel." }), frame({ type: "done" })]),
+    );
+    const chat: TutorChat = { system: "s", history: [] };
+
+    await sendMessageToTutorStream(chat, "apa itu atom?", () => {});
+
+    expect(chat.history).toEqual([
+      { role: "user", content: "apa itu atom?" },
+      { role: "assistant", content: "Atom adalah partikel." },
+    ]);
+  });
+
+  it("trims stored history to the last 40 turns starting with a user turn after done", async () => {
+    fetchMock.mockImplementation(async () =>
+      sseResponse([frame({ type: "delta", text: "jawaban" }), frame({ type: "done" })]),
+    );
+    const history: TutorChat["history"] = [];
+    for (let i = 0; i < 20; i++) {
+      history.push({ role: "user", content: `u${i}` }, { role: "assistant", content: `a${i}` });
+    }
+    const chat: TutorChat = { system: "s", history };
+
+    await sendMessageToTutorStream(chat, "baru", () => {});
+
+    expect(chat.history.length).toBeLessThanOrEqual(40);
+    expect(chat.history[0]).toEqual({ role: "user", content: "u1" });
+    expect(chat.history.slice(-2)).toEqual([
+      { role: "user", content: "baru" },
+      { role: "assistant", content: "jawaban" },
+    ]);
+  });
+
+  it("sends the apology and keeps history unchanged on an error frame", async () => {
+    fetchMock.mockImplementation(async () =>
+      sseResponse([frame({ type: "delta", text: "Sebagian" }), frame({ type: "error", error: "ai_generation_failed", message: "x" })]),
+    );
+    const chat: TutorChat = { system: "s", history: [] };
+
+    const chunks: string[] = [];
+    await sendMessageToTutorStream(chat, "hi", (t) => chunks.push(t));
+
+    expect(chunks[chunks.length - 1]).toBe(APOLOGY);
+    expect(chat.history).toEqual([]);
+  });
+
+  it("sends the apology and keeps history unchanged on a non-2xx response", async () => {
+    fetchMock.mockImplementation(
+      async () => new Response(JSON.stringify({ error: "insufficient_points", message: "x" }), { status: 429 }),
+    );
+    const chat: TutorChat = { system: "s", history: [] };
+
+    const chunks: string[] = [];
+    await sendMessageToTutorStream(chat, "hi", (t) => chunks.push(t));
+
+    expect(chunks).toEqual([APOLOGY]);
+    expect(chat.history).toEqual([]);
+  });
+
+  it("sends the apology without rethrowing when fetch rejects", async () => {
+    fetchMock.mockImplementation(async () => {
+      throw new TypeError("network down");
+    });
+    const chat: TutorChat = { system: "s", history: [] };
+
+    const chunks: string[] = [];
+    await expect(sendMessageToTutorStream(chat, "hi", (t) => chunks.push(t))).resolves.toBeUndefined();
+
+    expect(chunks).toEqual([APOLOGY]);
+    expect(chat.history).toEqual([]);
+  });
+});
