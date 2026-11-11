@@ -13,6 +13,13 @@ type SearchMessage = {
   content: SearchBlock[];
   stop_reason: string | null;
   stop_details?: { category?: string | null } | null;
+  usage?: SearchUsage | null;
+};
+
+type SearchUsage = {
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  server_tool_use?: { web_search_requests?: number | null } | null;
 };
 
 export type ResourceSearchResult = {
@@ -20,6 +27,7 @@ export type ResourceSearchResult = {
   sources: { url: string; title: string }[];
   stopReason: string | null;
   refusalCategory: string | null;
+  usage?: SearchUsage;
 };
 
 export async function runResourceSearch(opts: {
@@ -77,5 +85,6 @@ export async function runResourceSearch(opts: {
     sources,
     stopReason: message.stop_reason ?? null,
     refusalCategory: message.stop_details?.category ?? null,
+    ...(message.usage ? { usage: message.usage } : {}),
   };
 }

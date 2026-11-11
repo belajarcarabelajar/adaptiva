@@ -16,10 +16,18 @@ export interface CompleteInput {
   system?: string;
 }
 
+// The SDK reports absent counters as null.
+export type ClaudeUsage = {
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  server_tool_use?: { web_search_requests?: number | null } | null;
+};
+
 export interface CompleteResult {
   text: string;
   stopReason: string;
   refusalCategory?: string | null;
+  usage?: ClaudeUsage;
 }
 
 export interface ClaudeGateway {
@@ -30,6 +38,7 @@ type FinalMessage = {
   content: { type: string; text?: string }[];
   stop_reason: string | null;
   stop_details?: { category?: string | null } | null;
+  usage?: ClaudeUsage | null;
 };
 
 export function createClaudeGateway(
@@ -79,6 +88,7 @@ export function createClaudeGateway(
         text,
         stopReason: message.stop_reason ?? "",
         refusalCategory: message.stop_details?.category ?? null,
+        ...(message.usage ? { usage: message.usage } : {}),
       };
     },
   };

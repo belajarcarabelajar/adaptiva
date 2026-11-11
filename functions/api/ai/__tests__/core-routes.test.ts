@@ -221,7 +221,7 @@ describe("resources.search route", () => {
   it("answers 400 ai_generation_blocked on a refusal without a refund", async () => {
     const h = harness({
       search: async () => ({
-        text: "",
+        text: "Sebagian",
         sources: [],
         stopReason: "refusal",
         refusalCategory: "cyber",

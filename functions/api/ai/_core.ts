@@ -1,9 +1,10 @@
 // Request handling for /api/ai: validation, points, the Claude call, and the
-// error contract of the old Gemini proxy (functions/api/gemini/[[path]].ts).
+// error contract of the former Gemini proxy.
 // Shared by the Pages Function and the dev server, which passes no-op points.
 import {
   classifyGatewayError,
   type ClaudeGateway,
+  type ClaudeUsage,
 } from "./_claude";
 import { runResourceSearch } from "./_search";
 import { ACTION_POINT_COSTS, resolveTask, type TaskSpec } from "./_tasks";
@@ -15,6 +16,12 @@ import {
 } from "./_tutor";
 
 export const MAX_BODY_BYTES = 1048576;
+
+const BILLED_REFUSAL_CATEGORIES = new Set([
+  "bio",
+  "frontier_llm",
+  "reasoning_extraction",
+]);
 
 export interface AiEnv {
   ANTHROPIC_API_KEY?: string;
@@ -232,6 +239,7 @@ export async function handleAiRequest<E extends AiEnv>(
       stopReason: string | null;
       refusalCategory?: string | null;
       sources?: { url: string; title: string }[];
+      usage?: ClaudeUsage;
     };
     try {
       if (spec.kind === "search") {
@@ -288,9 +296,27 @@ export async function handleAiRequest<E extends AiEnv>(
       );
     }
 
-    // Claude bills a refusal, so the charge stays, like the old blocked case.
+    const empty = result.text.trim() === "";
+
     if (result.stopReason === "refusal") {
       const reason = result.refusalCategory || "refusal";
+      // Claude bills a refusal before any output only for these categories,
+      // and bills every refusal that came after partial output.
+      const billed =
+        !empty || BILLED_REFUSAL_CATEGORIES.has(result.refusalCategory ?? "");
+      if (!billed) {
+        const outcome = await refundCharge(request, env, deps, charge);
+        return json(
+          400,
+          {
+            error: "ai_generation_blocked",
+            message: `AI terhenti dengan alasan: ${reason}. ${refundNote(outcome)}`,
+            refunded: outcome.refunded,
+            remainingPoints: outcome.remainingPoints,
+          },
+          outcome.remainingPoints,
+        );
+      }
       return json(
         400,
         {
@@ -301,6 +327,30 @@ export async function handleAiRequest<E extends AiEnv>(
         },
         pointResult.remainingPoints,
       );
+    }
+
+    if (empty) {
+      const outcome = await refundCharge(request, env, deps, charge);
+      return json(
+        400,
+        {
+          error: "ai_generation_failed",
+          message: `AI tidak menghasilkan jawaban. ${refundNote(outcome)}`,
+          refunded: outcome.refunded,
+          remainingPoints: outcome.remainingPoints,
+        },
+        outcome.remainingPoints,
+      );
+    }
+
+    if (result.usage) {
+      console.log("Claude usage", {
+        task: spec.id,
+        model: spec.model,
+        input_tokens: result.usage.input_tokens,
+        output_tokens: result.usage.output_tokens,
+        web_search_requests: result.usage.server_tool_use?.web_search_requests,
+      });
     }
 
     const body =

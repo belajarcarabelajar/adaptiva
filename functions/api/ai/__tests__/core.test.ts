@@ -360,7 +360,8 @@ describe("handleAiRequest Claude failures", () => {
     const body = await res.json();
     expect(body.error).toBe("ai_generation_blocked");
     expect(body.message).toContain("AI terhenti dengan alasan: refusal.");
-    expect(h.refundCalls).toEqual([]);
+    // A pre-output refusal with no category is not billed, so it is refunded (D1).
+    expect(h.refundCalls).toEqual([20]);
   });
 
   it("answers 502 Proxy error and refunds once on an unexpected throw after the deduction", async () => {
