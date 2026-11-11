@@ -44,8 +44,17 @@ describe('default allowed origins', () => {
 });
 
 describe('/api/auth/* on the local server', () => {
-  test('answers 501 JSON instead of the SPA', async () => {
+  test('GET /api/auth/me answers the signed-out 401 JSON that production sends', async () => {
     const res = await fetch(`${base}/api/auth/me`, {
+      headers: { Origin: 'http://localhost:3000' },
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('content-type')).toContain('application/json');
+    expect(await res.json()).toEqual({ error: 'not_authenticated' });
+  });
+
+  test('GET /api/auth/login answers 501 JSON instead of the SPA', async () => {
+    const res = await fetch(`${base}/api/auth/login`, {
       headers: { Origin: 'http://localhost:3000' },
     });
     expect(res.status).toBe(501);
