@@ -1,7 +1,7 @@
 ---
 schema: ultra-plan/v1
 plan_id: 2026-11-12-migrasi-claude
-status: Approved
+status: Complete
 version: 1
 runner_contract: true
 defaults:
@@ -247,7 +247,7 @@ tasks:
 - [x] T1-T10 done with evidence, per the tasks below. Evidence: `ultra-plan-runner --execute` exit 0 (T1-T9, T11, T12 SKIPPED-IDEMPOTENT, T10 PASSED), 2026-11-12.
 - [x] Fix verification fan-out: replay the original repro, regression suites, sibling-caller audit, and an 8-criteria diff review. Evidence: T10 suites exit 0 (functions 215 pass, web 365, api 22, both typechecks, build, wrangler functions build); independent review round 2 verdict correct after two fixes (5019104, 62e57f6); sibling callers checked by the reviewer.
 - [x] Deliver: commit on the session branch, PR with `Refs #<n>`, plan and issue re-synced. Evidence: PR #73 (`Refs #72`), `plan-sync` publish exit 0, issue-sync exit 0.
-- [ ] Debt sweep, learning ledger, `graphify update` and `graphify:sync`.
+- [x] Debt sweep, learning ledger, `graphify update` and `graphify:sync`. Evidence: the sweep is recorded in Follow-up backlog, the ledger file is committed, and `graphify update .` exit 0 plus sync (nodes 670 -> 713, CURRENT) ran in the main checkout. They run again after the merge.
 
 ## Visual Map
 
@@ -588,7 +588,7 @@ The runner warns about `bun.lock`, `App.tsx` and `geminiService.test.ts` because
 | D12 | `_search.ts` keeps only the final turn's text after `pause_turn` | `_search.ts` | Join the text of every turn, plus a test | LATER (`defer: final turn holds the answer in observed shapes, upgrade-trigger: a resources reply that is cut short in production`) |
 | D13 | `pr-registry.mjs claim` silently ignores unknown flags such as `--project` | vivera repo | Reject unknown flags | LATER (`defer: other repo, upgrade-trigger: next vivera session`) |
 | D14 | A request without an `Origin` header to the dev server's `/api/*` returns 500 (CORS, pre-existing) | `apps/api/src/app.js` | 403 JSON or allowed | LATER (`defer: dev only, upgrade-trigger: a tool calls the dev API without Origin`) |
-| D15 | The owner's `.env.local` needs `ANTHROPIC_API_KEY` for local dev | owner's machine | Owner action; not written by the agent (credential) | OWNER |
+| D15 | The owner's `.env.local` needs `ANTHROPIC_API_KEY` for local dev | owner's machine | At the owner's request, written from the clipboard without printing it (mode 600, gitignored); `GET /v1/models` returned HTTP 200 | DONE |
 | D16 | The D9 usage log for `resources.search` reads only the final message's `usage`, so searches resumed after `pause_turn` are under-counted | `_search.ts` | Sum `usage` across turns, plus a test | LATER (`defer: log only, no billing effect, upgrade-trigger: usage numbers are used for pricing`) |
 | D17 | On a refunded tutor refusal, the SSE `x-adaptiva-points` header still shows the balance after the charge (headers go out before the refund); the frame states the refund only in its message | `_core.ts`, `_tutor.ts` | Add `remainingPoints` to the error frame and have `chat.ts` surface it | LATER (`defer: 2 points, the next request shows the right balance, upgrade-trigger: a user reports a wrong balance after a tutor refusal`) |
 
@@ -600,3 +600,6 @@ The runner warns about `bun.lock`, `App.tsx` and `geminiService.test.ts` because
 - 2026-11-12, after delivery: every selected follow-up (D1, D2, D3, D4, D7, D8, D9) landed, plus both review fixes. `plan-closeout --readiness` gave NEEDS-HUMAN (exit 3): every task is DONE except T10, which is UNPROVEN because its `skip_if` is `false` by design. T10's evidence is the full-suite runs, all exit 0, recorded in the acceptance criteria and in the body of PR #73. There are 0 open step boxes and 0 open NOW follow-ups.
 - `graphify update .` and `graphify-sync` ran in the main checkout (on `main`): update exit 0, sync nodes 670 -> 713, check CURRENT. The session docs live on this branch, so they reach the graph only after the merge. The last box (line 250) stays open until `graphify update .` and the sync run again after the merge.
 - Still open: the owner's `Close plan` decision, asked before the merge of PR #73. The promotion of the `claim --repo` rule was declined, so it stays in the repository's `MEMORY.md` only.
+- 2026-11-12, close: the owner asked to merge and to mark the plan Complete if every item was verified. `bun ~/vivera/scripts/plan-closeout.mjs --readiness` gave NEEDS-HUMAN (exit 3): T1-T9, T11 and T12 are DONE, and T10 is UNPROVEN only because its `skip_if` is `false` by design. `ultra-plan-runner --execute` recorded T10 as PASSED, and every T10 command exits 0 (see Acceptance Criteria). There are 0 open step boxes and 0 open NOW follow-ups. Status set to Complete.
+- `bun ~/vivera/scripts/plan-cost.mjs --plan 2026-11-12-migrasi-claude`: usd 39.8240 (estimate), 1 main transcript, 21 subagent runs. Caveats: sessions that never ran the registry claim are not counted, and other work in the claiming session is counted.
+- Open follow-ups, all LATER: D12, D13, D14, D16, D17.
