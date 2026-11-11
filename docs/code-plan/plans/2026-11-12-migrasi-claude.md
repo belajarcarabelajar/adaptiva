@@ -29,31 +29,31 @@ tasks:
         expect_exit: 0
         retry: 1
   - id: T2
-    depends_on: [T1]
+    depends_on: []
     impacts: ["tutor chat client in T6 reads the SSE frame format - rg -n 'event-stream|type.:.delta' functions/api/ai apps/web/src/services/gemini/chat.ts"]
-    files: { create: [functions/api/ai/__tests__/tutor-stream.test.ts], modify: [functions/api/ai/_core.ts, functions/api/ai/_claude.ts], test: [] }
+    files: { create: [functions/api/ai/_tutor.ts, functions/api/ai/__tests__/tutor.test.ts], modify: [], test: [] }
     idempotency_key: "T2:tutor-sse"
-    skip_if: "bun test --isolate functions/api/ai/__tests__/tutor-stream.test.ts"
+    skip_if: "bun test --isolate functions/api/ai/__tests__/tutor.test.ts"
     verify_exit: 0
     run:
-      - cmd: "bun test --isolate functions/api/ai/__tests__/tutor-stream.test.ts"
+      - cmd: "bun test --isolate functions/api/ai/__tests__/tutor.test.ts"
         expect_exit: 1
         retry: 0
-      - cmd: "bun test --isolate functions/api/ai"
+      - cmd: "bun test --isolate functions/api/ai/__tests__/tutor.test.ts"
         expect_exit: 0
         retry: 1
   - id: T3
-    depends_on: [T2]
+    depends_on: []
     impacts: ["resources client in T7 reads {text, sources} - rg -n 'sources' apps/web/src/services/gemini/resources.ts", "HistoryItem.learningResources keeps {web:{uri,title}} - rg -n 'learningResources' apps/web/src/types.ts"]
-    files: { create: [functions/api/ai/__tests__/resources.test.ts], modify: [functions/api/ai/_core.ts, functions/api/ai/_claude.ts, functions/api/ai/_tasks.ts], test: [] }
+    files: { create: [functions/api/ai/_search.ts, functions/api/ai/__tests__/search.test.ts], modify: [], test: [] }
     idempotency_key: "T3:resources-web-search"
-    skip_if: "bun test --isolate functions/api/ai/__tests__/resources.test.ts"
+    skip_if: "bun test --isolate functions/api/ai/__tests__/search.test.ts"
     verify_exit: 0
     run:
-      - cmd: "bun test --isolate functions/api/ai/__tests__/resources.test.ts"
+      - cmd: "bun test --isolate functions/api/ai/__tests__/search.test.ts"
         expect_exit: 1
         retry: 0
-      - cmd: "bun test --isolate functions/api/ai"
+      - cmd: "bun test --isolate functions/api/ai/__tests__/search.test.ts"
         expect_exit: 0
         retry: 1
   - id: T4
@@ -85,9 +85,9 @@ tasks:
         expect_exit: 0
         retry: 1
   - id: T6
-    depends_on: [T5, T2]
+    depends_on: []
     impacts: ["TutorSession.chat type and its three App.tsx creators - rg -n 'startChatSession|TutorSession|Chat \\| null' apps/web/src/App.tsx apps/web/src/types.ts", "persisted history recreates chat on load - rg -n 'startChatSession' apps/web/src/App.tsx"]
-    files: { create: [apps/web/src/services/gemini/chat.test.ts], modify: [apps/web/src/services/gemini/chat.ts, apps/web/src/types.ts, apps/web/src/App.tsx, apps/web/src/services/geminiService.test.ts], test: [] }
+    files: { create: [apps/web/src/services/gemini/chat.test.ts], modify: [apps/web/src/services/gemini/chat.ts, apps/web/src/types.ts, apps/web/src/App.tsx], test: [] }
     idempotency_key: "T6:tutor-chat-client"
     skip_if: "bun run --cwd apps/web test src/services/gemini/chat.test.ts"
     verify_exit: 0
@@ -95,16 +95,16 @@ tasks:
       - cmd: "bun run --cwd apps/web test src/services/gemini/chat.test.ts"
         expect_exit: 1
         retry: 0
-      - cmd: "bun run --cwd apps/web test src/services"
+      - cmd: "bun run --cwd apps/web test src/services/gemini/chat.test.ts"
         expect_exit: 0
         retry: 1
       - cmd: "bun x tsc --noEmit --project apps/web/tsconfig.json"
         expect_exit: 0
         retry: 0
   - id: T7
-    depends_on: [T6, T3]
+    depends_on: []
     impacts: ["App.tsx resources rendering of source.web.uri/title - rg -n 'source.web' apps/web/src/App.tsx"]
-    files: { create: [apps/web/src/services/gemini/resources.test.ts], modify: [apps/web/src/services/gemini/resources.ts, apps/web/src/services/geminiService.test.ts], test: [] }
+    files: { create: [apps/web/src/services/gemini/resources.test.ts], modify: [apps/web/src/services/gemini/resources.ts], test: [] }
     idempotency_key: "T7:resources-client"
     skip_if: "bun run --cwd apps/web test src/services/gemini/resources.test.ts"
     verify_exit: 0
@@ -112,11 +112,11 @@ tasks:
       - cmd: "bun run --cwd apps/web test src/services/gemini/resources.test.ts"
         expect_exit: 1
         retry: 0
-      - cmd: "bun run --cwd apps/web test src/services"
+      - cmd: "bun run --cwd apps/web test src/services/gemini/resources.test.ts"
         expect_exit: 0
         retry: 1
   - id: T8
-    depends_on: [T1]
+    depends_on: []
     impacts: ["root dev script starts apps/api - rg -n 'dev' package.json", "listen-host loopback guard stays - rg -n 'loopback|127.0.0.1' apps/api/src/listen-host.js", "devServer.test.ts pins the Vite proxy - rg -n 'api/' apps/web/src/devServer.test.ts"]
     files: { create: [], modify: [apps/api/src/app.js, apps/api/src/app.test.js, apps/api/src/env.js, apps/api/src/env.test.js, apps/api/src/server.js, apps/web/vite.config.ts, apps/web/src/devServer.test.ts], test: [] }
     idempotency_key: "T8:dev-server-ai-route"
@@ -133,7 +133,7 @@ tasks:
         expect_exit: 0
         retry: 1
   - id: T9
-    depends_on: [T7, T8]
+    depends_on: [T11, T8]
     impacts: ["pointCosts.test.ts imports ACTION_POINT_COSTS - rg -n 'ACTION_POINT_COSTS' apps/web/src", "SPA redirect rule order - rg -n 'api' apps/web/public/_redirects", "deploy script test gate runs the suites - rg -n 'test' scripts/deploy-website.sh", "docs mention GEMINI - rg -n -i 'gemini' README.md .env.example package.json wrangler.jsonc"]
     files: { create: [], modify: [apps/web/package.json, apps/web/index.html, apps/web/public/_redirects, apps/web/src/services/pointCosts.test.ts, package.json, bun.lock, .env.example, README.md, wrangler.jsonc], test: [] }
     idempotency_key: "T9:remove-gemini"
@@ -171,6 +171,23 @@ tasks:
         expect_exit: 0
         retry: 0
       - cmd: "bun run build"
+        expect_exit: 0
+        retry: 1
+  - id: T11
+    depends_on: [T1, T2, T3, T5, T6, T7]
+    impacts: ["handleAiRequest routes tutor.chat and resources.search - rg -n 'tutor.chat|resources.search' functions/api/ai/_core.ts", "old SDK-shaped blocks in geminiService.test.ts - rg -n 'describe' apps/web/src/services/geminiService.test.ts"]
+    files: { create: [functions/api/ai/__tests__/core-routes.test.ts], modify: [functions/api/ai/_core.ts, functions/api/ai/index.ts, apps/web/src/services/geminiService.test.ts], test: [] }
+    idempotency_key: "T11:wire-stream-and-search"
+    skip_if: "bun test --isolate functions/api/ai/__tests__/core-routes.test.ts"
+    verify_exit: 0
+    run:
+      - cmd: "bun test --isolate functions/api/ai/__tests__/core-routes.test.ts"
+        expect_exit: 1
+        retry: 0
+      - cmd: "bun test --isolate functions/api/ai"
+        expect_exit: 0
+        retry: 1
+      - cmd: "bun run --cwd apps/web test src/services src/hooks"
         expect_exit: 0
         retry: 1
 ---
@@ -222,19 +239,23 @@ tasks:
 
 ```mermaid
 flowchart TD
-    accTitle: Task graph for the Claude migration
-    accDescr: The plan gate opens the server chain (JSON endpoint, tutor stream, resources search) and the client chain (transport with curriculum, quiz and flashcard, chat, resources) plus the dev server, all of which merge into Gemini removal and full verification.
-    G{{"Plan gate"}} --> T1
-    T1["T1 /api/ai JSON tasks"] --> T2["T2 tutor SSE"]
-    T2 --> T3["T3 resources web_search"]
+    accTitle: Task graph for the Claude migration (v1.2)
+    accDescr: The plan gate opens independent pieces in parallel: the server endpoint, the tutor and search modules, the client transport chain, chat and resources clients, and the dev server. The parent wires the stream and search modules into the core, then Gemini is removed and everything is verified.
+    G{{"Plan gate"}} --> T1["T1 /api/ai JSON tasks"]
+    G --> T2["T2 tutor SSE module"]
+    G --> T3["T3 web_search module"]
     G --> T4["T4 client transport + curriculum"]
     T4 --> T5["T5 quiz, exam, flashcard"]
-    T5 --> T6["T6 tutor chat client"]
-    T2 --> T6
-    T6 --> T7["T7 resources client"]
-    T3 --> T7
-    T1 --> T8["T8 dev server /api/ai"]
-    T7 --> T9["T9 remove Gemini"]
+    G --> T6["T6 tutor chat client"]
+    G --> T7["T7 resources client"]
+    G --> T8["T8 dev server /api/ai"]
+    T1 --> T11["T11 wire stream + search, drop old test blocks"]
+    T2 --> T11
+    T3 --> T11
+    T5 --> T11
+    T6 --> T11
+    T7 --> T11
+    T11 --> T9["T9 remove Gemini"]
     T8 --> T9
     T9 --> T10["T10 full verification"]
     T10 --> V(["Verify fan-out, then PR"])
@@ -264,8 +285,8 @@ flowchart TD
 | AC-1 | T1, T4 | `bun test --isolate functions/api/ai/__tests__/tasks.test.ts` and `bun run --cwd apps/web test src/services/gemini/curriculum.test.ts` | the sevenDayPlan schema is `day1..day7` required; the client maps it to 7 days |
 | AC-2 | T1 | `bun test --isolate functions/api/ai/__tests__/claude.test.ts` | request body from the gateway: model, effort, format, betas/fallbacks only on Sonnet |
 | AC-3 | T1 | `bun test --isolate functions/api/ai/__tests__/core.test.ts` | the status, error and refund table from spec 2.3 |
-| AC-4 | T2, T6 | `bun test --isolate functions/api/ai/__tests__/tutor-stream.test.ts` and `bun run --cwd apps/web test src/services/gemini/chat.test.ts` | SSE frames delta, done and error; history appended |
-| AC-5 | T3, T7 | `bun test --isolate functions/api/ai/__tests__/resources.test.ts` and `bun run --cwd apps/web test src/services/gemini/resources.test.ts` | sources de-duplicated from `web_search_tool_result`, `pause_turn` at most 2 |
+| AC-4 | T2, T6, T11 | `bun test --isolate functions/api/ai/__tests__/tutor-stream.test.ts` and `bun run --cwd apps/web test src/services/gemini/chat.test.ts` | SSE frames delta, done and error; history appended |
+| AC-5 | T3, T7, T11 | `bun test --isolate functions/api/ai/__tests__/resources.test.ts` and `bun run --cwd apps/web test src/services/gemini/resources.test.ts` | sources de-duplicated from `web_search_tool_result`, `pause_turn` at most 2 |
 | AC-6 | T4, T5, T6, T7 | `bun x tsc --noEmit --project apps/web/tsconfig.json` | exit 0 with no change to the call sites in App.tsx and the hooks, except the `Chat` type |
 | AC-7 | T9, T10 | `bun run test`, `bun run test:functions`, `bun test apps/api/src`, `bun run build` | all exit 0; `rg` for google/genai and api/gemini is empty |
 
@@ -475,6 +496,21 @@ flowchart TD
 
 Runs: `bun run test`, `bun run test:functions`, `bun test apps/api/src`, `tsc` and `bun run build`, each with exit 0. The runs go through `colab-test`, in parallel where they are independent (A48).
 
+### Task T11: connect the tutor stream and resources search (parent)
+
+**Files:**
+- Create: `functions/api/ai/__tests__/core-routes.test.ts`.
+- Modify:
+  - `functions/api/ai/_core.ts`: the `stream` kind calls `validateTutorBody`, `streamTutorText` and `createTutorSseResponse`; the `search` kind calls `runResourceSearch` and returns `{text, sources}`. Both keep the deduct and refund contract from spec 2.3.
+  - `functions/api/ai/index.ts`: only if it has to pass extra dependencies.
+  - `apps/web/src/services/geminiService.test.ts`: delete the chat and resources blocks that T6 and T7 made obsolete.
+
+**Steps:**
+- [ ] RED: `bun test --isolate functions/api/ai/__tests__/core-routes.test.ts`, expected exit 1.
+- [ ] Implement the routes.
+- [ ] GREEN: `bun test --isolate functions/api/ai`, expected exit 0.
+- [ ] GREEN: `bun run --cwd apps/web test src/services src/hooks`, expected exit 0.
+
 ## Size warnings (runner)
 
 The runner warns about `bun.lock`, `App.tsx` and `geminiService.test.ts` because they are over 20,000 bytes. `bun.lock` is generated. `App.tsx` changes only the `Chat` type. `geminiService.test.ts` shrinks in each of T4-T7, because its blocks move to per-domain test files. Adaptiva has no `size:check` gate (`rg -n size package.json` finds nothing), so these are notes only, not blockers.
@@ -495,3 +531,11 @@ The runner warns about `bun.lock`, `App.tsx` and `geminiService.test.ts` because
 ## Amendments
 
 - 2026-11-12, v1.1: T4 now depends on nothing instead of `[T1]`. T4 needs only the `/api/ai` response contract (`{text}` plus the error strings in spec 2.3). That contract is fixed in the spec, and T4's files do not overlap with T1's, so T4 runs in parallel with T1. Expand, migrate, contract: T4 adds `callAiTask` and keeps `getAiClient`, `ai` and the Gemini model constants for the services that have not moved yet. T9 removes those, together with the `getAiClient` block in `core.gap.test.ts`.
+- 2026-11-12, v1.2 (owner asked for a wider parallel wave). To keep write scopes disjoint while T1 owns `_core.ts`/`_claude.ts` and T5 owns `geminiService.test.ts`, the remaining work was recut:
+  - T2 becomes `functions/api/ai/_tutor.ts` (body validation, SDK stream, SSE response), with no dependency.
+  - T3 becomes `functions/api/ai/_search.ts` (`web_search` plus `pause_turn`), with no dependency.
+  - T6 and T7 no longer edit `geminiService.test.ts`.
+  - T8 injects `aiHandler` into `createApp` and imports the T1 API only in `server.js`, so it has no dependency.
+  - New parent task T11 (after T1, T2, T3, T5, T6, T7) routes `tutor.chat` and `resources.search` in `_core.ts` through the two modules and removes the obsolete SDK-shaped blocks from `geminiService.test.ts`.
+  - T9 now depends on T11 and T8.
+  - AC traceability is unchanged except that AC-4 and AC-5 are also proven by `core-routes.test.ts` (T11).

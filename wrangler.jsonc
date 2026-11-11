@@ -1,7 +1,7 @@
 {
   // Cloudflare Pages config for the Adaptiva SPA + API proxy.
   // The static SPA is built by Vite into apps/web/dist.
-  // The Gemini API proxy lives in /functions and is served by Pages Functions.
+  // The Claude API route (/api/ai) lives in /functions and is served by Pages Functions.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "adaptiva",
   "pages_build_output_dir": "apps/web/dist",
