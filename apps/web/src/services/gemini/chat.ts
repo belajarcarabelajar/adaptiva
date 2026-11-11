@@ -1,11 +1,17 @@
-import { Chat } from "@google/genai";
-import { getAiClient, cleanAiOutput } from './core';
-import { MODEL_CHAT } from './constants';
+import { cleanAiOutput } from './core';
+import type { TutorChat } from '../../types';
+
+const aiTaskUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/ai` : 'http://localhost:3000/api/ai';
+
+// The server rejects more than 40 turns and requires the first one to be a user turn.
+const MAX_TURNS = 40;
+
+const APOLOGY = "I'm sorry, I encountered an error trying to respond. Please try again.";
 
 export const startChatSession = (
   topic: string,
   targetLanguage?: string
-): Chat => {
+): TutorChat => {
   let systemInstructionContent = `You are a helpful and patient personal tutor, an expert professor in the topic of "${topic}". Explain concepts clearly, provide examples, and encourage learning. Be concise and friendly. Use Markdown lists or plain text. Ensure there are no unnecessary blank lines in your output. Content should be compact and flow naturally without extra empty lines between paragraphs or list items unless specifically required for distinct separation by Markdown structure. IMPORTANT: Ensure that your responses do NOT contain raw '*' or '#' characters used for bolding, italics, or decorative purposes. Use these characters only for their standard Markdown structural use (like actual list items or headings). All other text should be plain. Prefer plain text for emphasis if not using a structural Markdown element.`;
 
   const langName = targetLanguage || "English";
@@ -20,32 +26,84 @@ export const startChatSession = (
     Explain concepts clearly, provide examples, and encourage learning. Be concise and friendly. Use Markdown lists or plain text. Ensure there are no unnecessary blank lines in your output. Content should be compact and flow naturally. IMPORTANT: Ensure that your responses do NOT contain raw '*' or '#' characters used for bolding, italics, or decorative purposes. Use these characters only for their standard Markdown structural use (like actual list items or headings). All other text should be plain. Prefer plain text for emphasis if not using a structural Markdown element.`;
   }
 
-  const chatConfig = {
-    model: MODEL_CHAT,
-    config: {
-      systemInstruction: systemInstructionContent,
-    },
-  };
-
-  const chat = getAiClient('tutor').chats.create(chatConfig);
-  return chat;
+  return { system: systemInstructionContent, history: [] };
 };
 
+const capTurns = (messages: TutorChat['history']): TutorChat['history'] => {
+  if (messages.length <= MAX_TURNS) return messages;
+  const kept = messages.slice(-MAX_TURNS);
+  return kept[0].role === 'user' ? kept : kept.slice(1);
+};
+
+type TutorFrame = { type?: unknown; text?: unknown };
+
 export const sendMessageToTutorStream = async (
-    chat: Chat,
+    chat: TutorChat,
     message: string,
     onChunk: (chunkText: string) => void
   ): Promise<void> => {
 
   try {
-    const responseStream = await chat.sendMessageStream({ message });
-    for await (const chunk of responseStream) {
-      if (chunk.text) {
-        onChunk(cleanAiOutput(chunk.text));
+    const response = await fetch(aiTaskUrl, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        task: 'tutor.chat',
+        system: chat.system,
+        messages: capTurns([...chat.history, { role: 'user', content: message }]),
+      }),
+    });
+    if (!response.ok || !response.body) {
+      throw new Error(`tutor.chat failed with status ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let reply = '';
+    let finished = false;
+
+    const handleFrame = (rawFrame: string) => {
+      const data = rawFrame
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trimStart())
+        .join('\n');
+      if (!data) return;
+      const parsed = JSON.parse(data) as TutorFrame;
+      if (parsed.type === 'delta' && typeof parsed.text === 'string' && parsed.text) {
+        reply += parsed.text;
+        onChunk(cleanAiOutput(parsed.text));
+      } else if (parsed.type === 'done') {
+        finished = true;
+      } else if (parsed.type === 'error') {
+        throw new Error(`tutor.chat stream error: ${data}`);
+      }
+    };
+
+    while (!finished) {
+      const { value, done } = await reader.read();
+      if (value) buffer += decoder.decode(value, { stream: true });
+      let boundary = buffer.indexOf('\n\n');
+      while (boundary !== -1 && !finished) {
+        handleFrame(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf('\n\n');
+      }
+      if (done) {
+        buffer += decoder.decode();
+        if (!finished && buffer.trim()) handleFrame(buffer);
+        break;
       }
     }
+    if (!finished) {
+      throw new Error('tutor.chat stream ended without a done frame');
+    }
+
+    chat.history.push({ role: 'user', content: message }, { role: 'assistant', content: reply });
   } catch (error) {
     console.error("Error sending streaming message to tutor:", error);
-    onChunk("I'm sorry, I encountered an error trying to respond. Please try again.");
+    onChunk(APOLOGY);
   }
 };

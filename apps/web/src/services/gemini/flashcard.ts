@@ -1,10 +1,8 @@
-import { GenerateContentResponse } from "@google/genai";
 import {
   GeminiFlashcardItem,
   GeminiFlashcardResponse
 } from '../../types';
-import { callWithRetries, getAiClient, parseGeminiJsonResponse } from './core';
-import { MODEL_FLASHCARDS } from './constants';
+import { callAiTask, callWithRetries, parseGeminiJsonResponse } from './core';
 
 export type FlashcardDeck = GeminiFlashcardItem[];
 
@@ -60,15 +58,10 @@ export const generateFlashcardsFromMaterial = async (
   `;
 
   try {
-    const response = await callWithRetries<GenerateContentResponse>(
-      () => getAiClient('flashcard').models.generateContent({
-        model: MODEL_FLASHCARDS,
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      }),
+    const rawResponseText = await callWithRetries(
+      () => callAiTask('flashcard.cards', { prompt }),
       `generateFlashcards for ${moduleTitle}`
     );
-    const rawResponseText = response.text;
     const parsedData = parseGeminiJsonResponse<GeminiFlashcardResponse>(rawResponseText);
 
     if (parsedData && parsedData.flashcards) {

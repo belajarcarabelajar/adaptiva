@@ -1,14 +1,10 @@
-import { GenerateContentResponse } from "@google/genai";
 import {
   QuizQuestion,
   GeminiQuizQuestion,
   ExamQuestion,
-  GeminiExamQuestion,
-  GeminiExamResponse,
-  ExamQuestionType
+  GeminiExamResponse
 } from '../../types';
-import { callWithRetries, getAiClient, parseGeminiJsonResponse } from './core';
-import { MODEL_QUIZ_GENERATION, MODEL_QUIZ_EXPLANATION, MODEL_EXAM_QUESTIONS } from './constants';
+import { callAiTask, callWithRetries, parseGeminiJsonResponse } from './core';
 
 export const generateQuiz = async (
   moduleTitle: string,
@@ -50,33 +46,30 @@ export const generateQuiz = async (
     - Line Breaks: Avoid unnecessary blank lines. Content should be compact and flow naturally.
     - Emphasis: For any emphasis, use phrasing or context, not symbols.
 
-    Respond STRICTLY with a JSON array of objects in the following format:
-    [
-      {
-        "question": "Question text?",
-        "options": ["Option A", "Option B", "Option C", "Option D"],
-        "correctAnswer": "Option C",
-        "explanation": "- Bullet point 1 explaining a core aspect.\\n- Bullet point 2 detailing another related concept.\\n- Bullet point 3 clarifying a common misconception or adding context."
-      }
-      // ... ${numQuestions-1} more questions
-    ]
-    The entire response MUST be a single, valid JSON array. Do not include any text, explanations, markdown formatting (beyond what's inside the explanation string for its own bullets), or any characters whatsoever outside of this JSON array structure. Ensure all strings within the JSON are correctly quoted and escaped, especially newlines within the explanation string (use \\n). There should be no extraneous characters before the opening bracket or after the final closing bracket of the array. Ensure you provide exactly ${numQuestions} questions.
+    Respond STRICTLY with a single, valid JSON object containing a single key "questions", which is an array of question objects:
+    {
+      "questions": [
+        {
+          "question": "Question text?",
+          "options": ["Option A", "Option B", "Option C", "Option D"],
+          "correctAnswer": "Option C",
+          "explanation": "- Bullet point 1 explaining a core aspect.\\n- Bullet point 2 detailing another related concept.\\n- Bullet point 3 clarifying a common misconception or adding context."
+        }
+        // ... ${numQuestions-1} more questions
+      ]
+    }
+    The entire response MUST be a single, valid JSON object. Do not include any text, explanations, markdown formatting (beyond what's inside the explanation string for its own bullets), or any characters whatsoever outside of this JSON object. Ensure all strings within the JSON are correctly quoted and escaped, especially newlines within the explanation string (use \\n). Ensure the "questions" array contains exactly ${numQuestions} questions, each with exactly 4 options.
   `;
 
   try {
-    const response = await callWithRetries<GenerateContentResponse>(
-      () => getAiClient('quiz').models.generateContent({
-        model: MODEL_QUIZ_GENERATION,
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      }),
+    const rawResponseText = await callWithRetries(
+      () => callAiTask('quiz.questions', { prompt }),
       `generateQuiz for ${moduleTitle}`
     );
-    const rawResponseText = response.text;
-    const parsedData = parseGeminiJsonResponse<GeminiQuizQuestion[]>(rawResponseText);
+    const parsedData = parseGeminiJsonResponse<{ questions?: unknown }>(rawResponseText);
 
-    if (parsedData) {
-      return parsedData.map((q, index) => ({
+    if (parsedData && Array.isArray(parsedData.questions)) {
+      return (parsedData.questions as GeminiQuizQuestion[]).map((q, index) => ({
         ...q,
         id: `q-${moduleTitle.replace(/\s+/g, '-')}-${index}`,
         detailedExplanation: undefined,
@@ -140,15 +133,10 @@ export const generateDetailedQuizExplanation = async (
   `;
 
   try {
-    const response = await callWithRetries<GenerateContentResponse>(
-      () => getAiClient('quiz').models.generateContent({
-        model: MODEL_QUIZ_EXPLANATION,
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      }),
+    const rawResponseText = await callWithRetries(
+      () => callAiTask('quiz.explanation', { prompt }),
       `generateDetailedQuizExplanation for question "${question.question.substring(0, 20)}..."`
     );
-    const rawResponseText = response.text;
     const parsedData = parseGeminiJsonResponse<{ detailedExplanation: string }>(rawResponseText);
 
     if (parsedData && typeof parsedData.detailedExplanation === 'string') {
@@ -200,13 +188,11 @@ export const generateExamQuestions = async (
     The overall difficulty for this exam should be: ${difficultyDescription} (difficulty level ${difficulty} out of 5).
 
     For EACH multiple-choice question, provide:
-    1.  "type": "multiple-choice".
-    2.  "questionText": The clear and unambiguous question.
-    3.  "options": An array of 4 distinct string options.
-    4.  "correctAnswer": The exact string of the correct option.
-    5.  "explanation": A comprehensive explanation why the correct answer is right and briefly why other options are incorrect.
+    1.  "questionText": The clear and unambiguous question.
+    2.  "options": An array of 4 distinct string options.
+    3.  "correctAnswer": The exact string of the correct option.
+    4.  "explanation": A comprehensive explanation why the correct answer is right and briefly why other options are incorrect.
         The explanation MUST be structured with at least 3 bullet points (e.g., using '*' or '-' at the start of each bullet point line) for readability.
-    6.  "maxPoints": Assign 1 point for each multiple-choice question.
 
     CONTENT GUIDELINES (apply to questionText, options, correctAnswer, explanation):
     - Text Formatting: Do NOT use raw '*' or '#' characters for bolding, italics, or any decorative emphasis, unless for Markdown list markers in explanation.
@@ -219,12 +205,10 @@ export const generateExamQuestions = async (
     {
       "questions": [
         {
-          "type": "multiple-choice",
           "questionText": "MC Question 1 text?",
           "options": ["Option A", "Option B", "Option C", "Option D"],
           "correctAnswer": "Option C",
-          "explanation": "- Bullet 1 for MC Q1.\\n- Bullet 2 for MC Q1.\\n- Bullet 3 for MC Q1.",
-          "maxPoints": 1
+          "explanation": "- Bullet 1 for MC Q1.\\n- Bullet 2 for MC Q1.\\n- Bullet 3 for MC Q1."
         }
         // ... more multiple-choice questions up to the total of ${numMC}
       ]
@@ -233,15 +217,10 @@ export const generateExamQuestions = async (
   `;
 
   try {
-    const response = await callWithRetries<GenerateContentResponse>(
-      () => getAiClient('exam').models.generateContent({
-        model: MODEL_EXAM_QUESTIONS,
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      }),
+    const rawResponseText = await callWithRetries(
+      () => callAiTask('exam.questions', { prompt }),
       `generateExamQuestions for ${moduleTitle}`
     );
-    const rawResponseText = response.text;
     const parsedData = parseGeminiJsonResponse<GeminiExamResponse>(rawResponseText);
 
     if (parsedData && parsedData.questions) {
