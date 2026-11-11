@@ -581,7 +581,7 @@ The runner warns about `bun.lock`, `App.tsx` and `geminiService.test.ts` because
 | D5 | Tutor delta trim | `chat.ts` | moved into the plan as T12 | IN PLAN |
 | D6 | Leftover `- day: The day number (1-7).` line in the 7-day prompt; unused `GeminiSevenDayPlanResponse` type; unused Gemini `MODEL_*` constants | `curriculum.ts`, `types.ts`, `constants.ts` | moved into T9 scope | IN PLAN |
 | D7 | `TutorChat.history` grows without limit in memory (the request is capped at 40) | `chat.ts` | Trim history to the last 40 turns after `done`, plus a test | NOW candidate |
-| D8 | Spec 2.2 says `_claude.ts` is the only SDK importer; `_tutor.ts` and `_search.ts` import it too | `docs/code-plan/specs/2026-11-12-migrasi-claude-design.md` | Text updated | NOW candidate |
+| D8 | Spec 2.2 says `_claude.ts` is the only SDK importer; `_tutor.ts` and `_search.ts` import it too | `docs/code-plan/specs/2026-11-12-migrasi-claude-design.md` | Text updated | DONE (spec 2.2 amended 2026-11-12) |
 | D9 | No per-action usage log, so the cost of Sonnet plus search at the old point prices is invisible | `_core.ts` | `console.log` of `usage` per task (tokens, `web_search_requests`), visible in `pages:tail` | NOW candidate |
 | D10 | `apps/api/src/listen-host.js:14` message still names `/api/gemini` and `GEMINI_API_KEY`; `apps/api/package.json` keeps unused `http-proxy-middleware` | `apps/api` | moved into T9 scope | IN PLAN |
 | D11 | The functions bundle with the SDK was never built (`bun run build` builds only the web app) | T10 | `bunx wrangler pages functions build` exit 0 added to T10 | IN PLAN |
@@ -589,3 +589,9 @@ The runner warns about `bun.lock`, `App.tsx` and `geminiService.test.ts` because
 | D13 | `pr-registry.mjs claim` silently ignores unknown flags such as `--project` | vivera repo | Reject unknown flags | LATER (`defer: other repo, upgrade-trigger: next vivera session`) |
 | D14 | A request without an `Origin` header to the dev server's `/api/*` returns 500 (CORS, pre-existing) | `apps/api/src/app.js` | 403 JSON or allowed | LATER (`defer: dev only, upgrade-trigger: a tool calls the dev API without Origin`) |
 | D15 | The owner's `.env.local` needs `ANTHROPIC_API_KEY` for local dev | owner's machine | Owner action; not written by the agent (credential) | OWNER |
+
+## Closeout status
+
+- 2026-11-12, debt sweep run early at the owner's request. The `Close plan` answer was `Keep it open`. Readiness was NOT-READY by inspection: T9, T10, T11 and T12 were still running.
+- Owner-selected follow-ups to land in this PR: D1, D2, D3, D4, D7, D8, D9. D8 was done in the spec, section 2.2.
+- Reopen the close question when T10 and the selected follow-ups are green. Then run `bun ~/vivera/scripts/plan-closeout.mjs --readiness <plan>` before the final merge.

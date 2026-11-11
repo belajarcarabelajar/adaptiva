@@ -62,7 +62,7 @@ flowchart LR
 ### 2.2 Gateway (`functions/api/ai/_claude.ts`)
 
 - `createClaudeGateway(apiKey, fetchImpl?)` returns `{ complete(spec, input), streamText(spec, input, onDelta) }`.
-- It is the only module that imports `@anthropic-ai/sdk`. It is the system boundary that the core tests replace.
+- It holds the JSON tasks' SDK calls. Two sibling modules also import `@anthropic-ai/sdk`: `_tutor.ts` (the tutor SSE stream) and `_search.ts` (`web_search` with `pause_turn`). Each is a system boundary that the core tests replace through `AiDeps` (amended 2026-11-12, plan v1.2).
 - Every call goes through `stream(...)` and `finalMessage()`. The skill docs recommend streaming above about 16K `max_tokens`, and module and exam reach 32768.
 - Sonnet: `client.beta.messages.stream({ betas: ["server-side-fallback-2026-07-01"], fallbacks: "default", ... })`.
 - Haiku: `client.messages.stream(...)` without `fallbacks`. The docs say Haiku 5.5 has no server fallback and a list form returns a 400.
