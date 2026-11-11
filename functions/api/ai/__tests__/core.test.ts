@@ -238,14 +238,14 @@ describe("handleAiRequest success", () => {
     expect(h.deductCalls).toEqual([5]);
   });
 
-  it("returns max_tokens text as is and keeps the charge", async () => {
+  it("rejects truncated max_tokens JSON with ai_generation_failed and refunds the charge", async () => {
     const h = harness({
       complete: async () => ({ text: '{"questions":[{"quest', stopReason: "max_tokens", refusalCategory: null }),
     });
     const res = await handleAiRequest(post({ task: "quiz.questions", prompt: "x" }), ENV, h.deps);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ text: '{"questions":[{"quest' });
-    expect(h.refundCalls).toEqual([]);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("ai_generation_failed");
+    expect(h.refundCalls).toEqual([10]);
   });
 });
 

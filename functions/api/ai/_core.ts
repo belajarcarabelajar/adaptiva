@@ -97,6 +97,16 @@ function refundNote(outcome: RefundOutcome): string {
     : "Poin Anda gagal dikembalikan, silakan hubungi admin.";
 }
 
+function isUsableJson(result: { text: string; stopReason: string | null }): boolean {
+  if (result.stopReason === "max_tokens") return false;
+  try {
+    JSON.parse(result.text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 type Parsed =
   | { ok: true; spec: TaskSpec; prompt: string; system?: string; tutor?: undefined }
   | { ok: true; spec: TaskSpec; tutor: TutorBody }
@@ -350,6 +360,24 @@ export async function handleAiRequest<E extends AiEnv>(
         {
           error: "ai_generation_failed",
           message: `AI tidak menghasilkan jawaban. ${refundNote(outcome)}`,
+          refunded: outcome.refunded,
+          remainingPoints: outcome.remainingPoints,
+        },
+        outcome.remainingPoints,
+      );
+    }
+
+    if (spec.kind === "json" && !isUsableJson(result)) {
+      console.error("Claude JSON output unusable", {
+        task: spec.id,
+        stopReason: result.stopReason,
+      });
+      const outcome = await refundCharge(request, env, deps, charge);
+      return json(
+        400,
+        {
+          error: "ai_generation_failed",
+          message: `Jawaban AI tidak lengkap. ${refundNote(outcome)}`,
           refunded: outcome.refunded,
           remainingPoints: outcome.remainingPoints,
         },
