@@ -155,6 +155,26 @@ describe("sendMessageToTutorStream response", () => {
     ]);
   });
 
+  it("trims stored history to the last 40 turns starting with a user turn after done", async () => {
+    fetchMock.mockImplementation(async () =>
+      sseResponse([frame({ type: "delta", text: "jawaban" }), frame({ type: "done" })]),
+    );
+    const history: TutorChat["history"] = [];
+    for (let i = 0; i < 20; i++) {
+      history.push({ role: "user", content: `u${i}` }, { role: "assistant", content: `a${i}` });
+    }
+    const chat: TutorChat = { system: "s", history };
+
+    await sendMessageToTutorStream(chat, "baru", () => {});
+
+    expect(chat.history.length).toBeLessThanOrEqual(40);
+    expect(chat.history[0]).toEqual({ role: "user", content: "u1" });
+    expect(chat.history.slice(-2)).toEqual([
+      { role: "user", content: "baru" },
+      { role: "assistant", content: "jawaban" },
+    ]);
+  });
+
   it("sends the apology and keeps history unchanged on an error frame", async () => {
     fetchMock.mockImplementation(async () =>
       sseResponse([frame({ type: "delta", text: "Sebagian" }), frame({ type: "error", error: "ai_generation_failed", message: "x" })]),

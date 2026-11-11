@@ -114,6 +114,8 @@ export const sendMessageToTutorStream = async (
     }
 
     chat.history.push({ role: 'user', content: message }, { role: 'assistant', content: reply });
+    const kept = capTurns(chat.history);
+    chat.history.splice(0, chat.history.length - kept.length);
   } catch (error) {
     console.error("Error sending streaming message to tutor:", error);
     onChunk(APOLOGY);
