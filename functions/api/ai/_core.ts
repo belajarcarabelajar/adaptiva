@@ -1,8 +1,18 @@
 // Request handling for /api/ai: validation, points, the Claude call, and the
 // error contract of the old Gemini proxy (functions/api/gemini/[[path]].ts).
 // Shared by the Pages Function and the dev server, which passes no-op points.
-import { classifyGatewayError, type ClaudeGateway } from "./_claude";
+import {
+  classifyGatewayError,
+  type ClaudeGateway,
+} from "./_claude";
+import { runResourceSearch } from "./_search";
 import { ACTION_POINT_COSTS, resolveTask, type TaskSpec } from "./_tasks";
+import {
+  createTutorSseResponse,
+  streamTutorText,
+  validateTutorBody,
+  type TutorBody,
+} from "./_tutor";
 
 export const MAX_BODY_BYTES = 1048576;
 
@@ -22,6 +32,9 @@ export interface AiDeps<E = AiEnv> {
     env: E,
     amount: number,
   ): Promise<{ success: boolean; remainingPoints: number }>;
+  // Optional so index.ts and the dev server use the real Claude calls; tests inject fakes.
+  tutor?: { stream: typeof streamTutorText };
+  search?: { run: typeof runResourceSearch };
 }
 
 // Points actually taken for this request, so an unexpected throw refunds only
@@ -78,7 +91,8 @@ function refundNote(outcome: RefundOutcome): string {
 }
 
 type Parsed =
-  | { ok: true; spec: TaskSpec; prompt: string; system?: string }
+  | { ok: true; spec: TaskSpec; prompt: string; system?: string; tutor?: undefined }
+  | { ok: true; spec: TaskSpec; tutor: TutorBody }
   | { ok: false; response: Response };
 
 async function parseRequest(request: Request): Promise<Parsed> {
@@ -114,8 +128,12 @@ async function parseRequest(request: Request): Promise<Parsed> {
 
   const spec = typeof fields.task === "string" ? resolveTask(fields.task) : null;
   if (!spec) return fail(400, "unknown_task");
-  // tutor.chat (T2) and resources.search (T3) are registered but not served yet.
-  if (spec.kind !== "json") return fail(400, "unsupported_request");
+
+  if (spec.kind === "stream") {
+    const tutor = validateTutorBody(fields);
+    if (!tutor) return fail(400, "unsupported_request");
+    return { ok: true, spec, tutor };
+  }
 
   const { prompt, system } = fields;
   if (typeof prompt !== "string" || prompt.trim() === "") {
@@ -137,7 +155,8 @@ export async function handleAiRequest<E extends AiEnv>(
   env: E,
   deps: AiDeps<E>,
 ): Promise<Response> {
-  if (!env.ANTHROPIC_API_KEY) {
+  const apiKey = env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
     return json(500, {
       error: "ANTHROPIC_API_KEY is not configured on this Pages project.",
     });
@@ -168,12 +187,69 @@ export async function handleAiRequest<E extends AiEnv>(
     charge.points = cost;
     charge.balanceAfterCharge = pointResult.remainingPoints;
 
-    let result;
+    if (parsed.tutor) {
+      const { system, messages } = parsed.tutor;
+      const stream = deps.tutor?.stream ?? streamTutorText;
+      return createTutorSseResponse(
+        (onDelta) =>
+          stream({
+            apiKey,
+            model: spec.model,
+            effort: spec.effort,
+            maxTokens: spec.maxTokens,
+            system,
+            messages,
+            onDelta,
+          }),
+        {
+          onErrorBeforeOutput: async (err) => {
+            const info = classifyGatewayError(err);
+            const outcome = await refundCharge(request, env, deps, charge);
+            if (info.kind === "network") {
+              return {
+                error: "ai_upstream_network_error",
+                message: `Gagal terhubung ke layanan AI. ${refundNote(outcome)}`,
+              };
+            }
+            console.error("Claude tutor error", {
+              task: spec.id,
+              status: info.kind === "api" ? info.status : undefined,
+              message: info.detail || undefined,
+            });
+            const status = info.kind === "api" ? ` (${info.status})` : "";
+            return {
+              error: "ai_generation_failed",
+              message: `Layanan AI mengalami kendala${status}. ${refundNote(outcome)}`,
+            };
+          },
+          headers: { "x-adaptiva-points": String(pointResult.remainingPoints) },
+        },
+      );
+    }
+
+    let result: {
+      text: string;
+      stopReason: string | null;
+      refusalCategory?: string | null;
+      sources?: { url: string; title: string }[];
+    };
     try {
-      result = await deps.gateway.complete(spec, {
-        prompt: parsed.prompt,
-        ...(parsed.system !== undefined ? { system: parsed.system } : {}),
-      });
+      if (spec.kind === "search") {
+        const run = deps.search?.run ?? runResourceSearch;
+        result = await run({
+          apiKey,
+          model: spec.model,
+          // The registry gives resources.search effort "medium", the only value the search call takes.
+          effort: spec.effort as "medium",
+          maxTokens: spec.maxTokens,
+          prompt: parsed.prompt,
+        });
+      } else {
+        result = await deps.gateway.complete(spec, {
+          prompt: parsed.prompt,
+          ...(parsed.system !== undefined ? { system: parsed.system } : {}),
+        });
+      }
     } catch (err) {
       const info = classifyGatewayError(err);
       if (info.kind === "unexpected") throw err;
@@ -227,7 +303,11 @@ export async function handleAiRequest<E extends AiEnv>(
       );
     }
 
-    return json(200, { text: result.text }, pointResult.remainingPoints);
+    const body =
+      spec.kind === "search"
+        ? { text: result.text, sources: result.sources ?? [] }
+        : { text: result.text };
+    return json(200, body, pointResult.remainingPoints);
   } catch (err) {
     const charged = charge.points > 0;
     const outcome = await refundCharge(request, env, deps, charge);

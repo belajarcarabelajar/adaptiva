@@ -129,8 +129,6 @@ describe("handleAiRequest validation (no points taken)", () => {
     ["a missing prompt", { task: "curriculum.outline" }, "unsupported_request"],
     ["a non-string prompt", { task: "curriculum.outline", prompt: 42 }, "unsupported_request"],
     ["a non-string system", { task: "curriculum.outline", prompt: "x", system: 5 }, "unsupported_request"],
-    ["tutor.chat (not served in T1)", { task: "tutor.chat", system: "s", messages: [{ role: "user", content: "hi" }] }, "unsupported_request"],
-    ["resources.search (not served in T1)", { task: "resources.search", prompt: "cari" }, "unsupported_request"],
   ];
 
   for (const [label, body, error] of BAD_REQUESTS) {
