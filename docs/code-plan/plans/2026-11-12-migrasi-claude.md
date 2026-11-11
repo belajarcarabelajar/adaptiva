@@ -246,7 +246,7 @@ tasks:
 - [x] Session claimed. `pr-registry claim --session migrasi-claude-adaptiva --repo <adaptiva> --worktree` reports claimed, with worktree `/mnt/belajarcarabelajar/adaptiva-wt/migrasi-claude-adaptiva` on branch `2026-11-12-migrasi-claude/migrasi-claude-adaptiva` from `origin/main` 1015764. The first claim omitted `--repo` and landed in vivera: its clean worktree and branch were removed, and its slot was set to `closed`.
 - [x] T1-T10 done with evidence, per the tasks below. Evidence: `ultra-plan-runner --execute` exit 0 (T1-T9, T11, T12 SKIPPED-IDEMPOTENT, T10 PASSED), 2026-11-12.
 - [x] Fix verification fan-out: replay the original repro, regression suites, sibling-caller audit, and an 8-criteria diff review. Evidence: T10 suites exit 0 (functions 215 pass, web 365, api 22, both typechecks, build, wrangler functions build); independent review round 2 verdict correct after two fixes (5019104, 62e57f6); sibling callers checked by the reviewer.
-- [ ] Deliver: commit on the session branch, PR with `Refs #<n>`, plan and issue re-synced.
+- [x] Deliver: commit on the session branch, PR with `Refs #<n>`, plan and issue re-synced. Evidence: PR #73 (`Refs #72`), `plan-sync` publish exit 0, issue-sync exit 0.
 - [ ] Debt sweep, learning ledger, `graphify update` and `graphify:sync`.
 
 ## Visual Map
