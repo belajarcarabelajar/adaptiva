@@ -52,6 +52,8 @@ export interface Env {
   AUTH_BASE_URL?: string;
   // Optional: restrict to specific domains for security. Empty = any.
   ALLOWED_EMAIL_DOMAINS?: string;
+  // Optional: comma-separated emails with unlimited points. Empty = no admins.
+  ADMIN_EMAILS?: string;
 }
 
 export interface Session {
@@ -82,6 +84,17 @@ export interface GoogleUserInfo {
   picture?: string;
   given_name?: string;
   family_name?: string;
+}
+
+export const ADMIN_POINTS = 999999;
+
+export function isAdminEmail(env: Env, email: string): boolean {
+  const target = email?.trim().toLowerCase();
+  if (!target) return false;
+  return (env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .some((e) => e !== "" && e === target);
 }
 
 export const SESSION_COOKIE = "adaptiva_sess";
@@ -336,6 +349,9 @@ export async function deductUserPoints(
 }> {
   const session = await readAccountSession(request, env);
   if (!session) return { success: false, remainingPoints: 0, session: null };
+  if (isAdminEmail(env, session.email)) {
+    return { success: true, remainingPoints: ADMIN_POINTS, session };
+  }
   const result = await deductPoints(env, session.userId, cost);
   return { ...result, session };
 }
@@ -347,6 +363,9 @@ export async function refundUserPoints(
 ): Promise<{ success: boolean; remainingPoints: number }> {
   const session = await readAccountSession(request, env);
   if (!session) return { success: false, remainingPoints: 0 };
+  if (isAdminEmail(env, session.email)) {
+    return { success: true, remainingPoints: ADMIN_POINTS };
+  }
   return refundPoints(env, session.userId, amount);
 }
 

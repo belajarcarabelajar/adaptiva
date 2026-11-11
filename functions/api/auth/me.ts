@@ -4,7 +4,9 @@
 // Never returns tokens.
 
 import {
+  ADMIN_POINTS,
   getSession,
+  isAdminEmail,
   jsonResponse,
   getAllowedOrigin,
   type Env,
@@ -37,7 +39,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       email: session.email,
       name: session.name,
       picture: session.picture,
-      points: await getBalance(env, session.userId),
+      points: isAdminEmail(env, session.email)
+        ? ADMIN_POINTS
+        : await getBalance(env, session.userId),
     },
   }, 200, {}, env);
 };
