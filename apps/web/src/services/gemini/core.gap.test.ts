@@ -1,17 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { cleanAiOutput, parseGeminiJsonResponse, cleanModuleTitle, callWithRetries, getAiClient } from "./core";
-
-// The module builds a GoogleGenAI client at import time; stub it so the pure helpers
-// can be tested without touching the real SDK. The stub records its constructor options
-// (hand edit, used by the getAiClient tests at the bottom of the file).
-const sdk = vi.hoisted(() => ({ calls: [] as unknown[] }));
-vi.mock("@google/genai", () => ({
-  GoogleGenAI: class {
-    constructor(options: unknown) {
-      sdk.calls.push(options);
-    }
-  },
-}));
+import { cleanAiOutput, parseGeminiJsonResponse, cleanModuleTitle, callWithRetries } from "./core";
 
 describe("cleanAiOutput", () => {
   const cases: { name: string; input: string; expected: string }[] = [
@@ -285,25 +273,6 @@ describe("callWithRetries", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     await outcome;
     expect(fn).toHaveBeenCalledTimes(3);
-  });
-});
-
-describe("getAiClient", () => {
-  it("creates the SDK client against the proxy with a dummy key and the action header", () => {
-    getAiClient("quiz");
-    expect(sdk.calls[sdk.calls.length - 1]).toEqual({
-      apiKey: "proxy_key",
-      httpOptions: {
-        baseUrl: `${window.location.origin}/api/gemini`,
-        headers: { "x-adaptiva-action": "quiz" },
-      },
-    });
-  });
-
-  it("uses 'default' as the action header when no action is given", () => {
-    getAiClient();
-    const options = sdk.calls[sdk.calls.length - 1] as { httpOptions: { headers: Record<string, string> } };
-    expect(options.httpOptions.headers).toEqual({ "x-adaptiva-action": "default" });
   });
 });
 

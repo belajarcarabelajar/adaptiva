@@ -1,20 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
-
-// Use the proxy configured in vite.config.ts to avoid exposing the API key on the client side.
-const proxyBaseUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/gemini` : 'http://localhost:3000/api/gemini';
-
-export const getAiClient = (actionName = 'default') => {
-  return new GoogleGenAI({
-    apiKey: 'proxy_key', // Dummy key; actual key is attached by the Vite proxy
-    httpOptions: {
-      baseUrl: proxyBaseUrl,
-      headers: { 'x-adaptiva-action': actionName } as Record<string, string>,
-    },
-  });
-};
-
-export const ai = getAiClient('default');
-
 const aiTaskUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/ai` : 'http://localhost:3000/api/ai';
 
 // The thrown message keeps the "<status> <error>: <message>" form because callWithRetries matches on those substrings.

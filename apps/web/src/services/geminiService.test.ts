@@ -1,12 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
-
-// core.ts still builds a GoogleGenAI client at import time until the Gemini
-// removal task; the stub keeps this barrel test free of the real SDK.
-vi.mock('@google/genai', () => ({
-  GoogleGenAI: class {
-    constructor() {}
-  },
-}));
+import { describe, it, expect } from 'vitest';
 
 import { cleanModuleTitle, cleanAiOutput } from './geminiService';
 

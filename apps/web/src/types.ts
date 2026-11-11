@@ -52,14 +52,6 @@ export interface GeminiModuleDetailResponse {
   moduleMaterial: string; 
 }
 
-export interface GeminiSevenDayPlanResponse {
-  days: Array<{
-    day: number;
-    task: string;
-    summaryFocus: string;
-  }>;
-}
-
 export interface GeminiQuizQuestion {
   question: string;
   options: string[];

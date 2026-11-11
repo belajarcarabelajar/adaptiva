@@ -280,8 +280,7 @@ export const generateSevenDayPlan = async (
     - Hands-on: Propose practical exercises, coding, building, or experiments.
     - Examples: Use case studies, worked problems, or real-world applications.
 
-    For each day, provide:
-    - day: The day number (1-7).
+    Provide objects day1 through day7, each with:
     - task: The main learning task for the day formatted as a Markdown bulleted list.
     - summaryFocus: The clean title of the module(s) that the day's tasks cover.
 
