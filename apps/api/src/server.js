@@ -8,7 +8,7 @@ import { resolveListenHost } from './listen-host.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.resolve(__dirname, '../../../apps/web/dist');
 
-dotenv.config({ path: ENV_FILE });
+dotenv.config({ path: ENV_FILE, quiet: true });
 
 const port = process.env.PORT || 3001;
 
@@ -48,6 +48,10 @@ const aiHandler = (request) =>
 
 const app = createApp({ aiHandler, webDist: WEB_DIST, port, allowedOrigins });
 
-app.listen(port, host, () => {
+app.listen(port, host, (err) => {
+  if (err) {
+    console.error(`[adaptiva-api] cannot listen on ${host}:${port}: ${err.code ?? err.message}`);
+    process.exit(1);
+  }
   console.log(`Server is running on http://${host}:${port}`);
 });

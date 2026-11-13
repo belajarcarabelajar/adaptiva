@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import { Readable } from 'stream';
-import path from 'path';
 
 // 3000 is the Vite dev server; `port` is this server, which serves the built SPA in `bun start`.
 export function defaultAllowedOrigins(port) {
@@ -95,7 +94,9 @@ export function createApp({ aiHandler, webDist, port, allowedOrigins = defaultAl
   app.use(express.static(webDist));
 
   app.get(/(.*)/, (req, res) => {
-    res.sendFile(path.join(webDist, 'index.html'));
+    // With root, send only checks the relative part for dot segments; Express 5
+    // checks every segment of an absolute path, so a checkout under ~/.cache 404s.
+    res.sendFile('index.html', { root: webDist });
   });
 
   return app;
